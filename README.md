@@ -31,8 +31,8 @@ An API for scraping web content including Facebook Marketplace listings, Faceboo
 
 1. Clone the repository:
 ```
-git clone https://github.com/yourusername/web-scraper-api.git
-cd web-scraper-api
+git clone https://github.com/analytics360-projects/Vulcan.git
+cd Vulcan
 ```
 
 2. Install required packages:
@@ -92,8 +92,4 @@ curl -X GET "http://localhost:8000/news/trending?language=en&country=US&max_resu
 
 ## Configuration
 
-Configuration settings can be modified in `facebook_scraper/config.py`.
-
-## License
-
-[MIT License](LICENSE)
+Configuration settings can be modified in `config.py`.
