@@ -6,7 +6,7 @@ from models.news import NewsSearchResults, NewsArticle
 from services.web_scraper import (
     fetch_google_news, extract_article_content, fetch_news_with_content
 )
-
+from services.news_analyzer import analyze_article_with_llm, analyze_news_batch
 
 router = APIRouter(
     prefix="/news",
@@ -21,19 +21,26 @@ router = APIRouter(
 
 @router.get("/search", response_model=NewsSearchResults)
 async def search_news(
-        query: str = Query(..., description="Search query for news articles"),
-        language: str = Query("es", description="Language code"),
-        country: str = Query("MX", description="Country code"),
-        max_results: int = Query(5, description="Maximum number of results to return", ge=1, le=20),
-        include_content: bool = Query(False, description="Whether to include full article content")
+    query: str = Query(..., description="Search query for news articles"),
+    language: str = Query("es", description="Language code"),
+    country: str = Query("MX", description="Country code"),
+    max_results: int = Query(5, description="Maximum number of results to return", ge=1, le=20),
+    include_content: bool = Query(False, description="Whether to include full article content"),
+    analyze: bool = Query(False, description="Whether to analyze articles with LLM")
 ):
     """
     Search for news articles using Google News.
 
     This endpoint searches Google News and returns articles matching the query.
     If include_content is True, it will also extract the full article text and images.
+    If analyze is True, it will use an LLM to analyze the article content.
     """
     try:
+        # Always require include_content if analyze is True
+        if analyze and not include_content:
+            include_content = True
+
+        # First, get the articles
         if include_content:
             articles = fetch_news_with_content(
                 query=query,
@@ -50,9 +57,65 @@ async def search_news(
                 max_results=max_results
             )
 
-        # Convert to model objects and return
+        # Convert to model objects first
         news_articles = [NewsArticle(**article) for article in articles]
 
+        # If analyze is requested, try to analyze the articles
+        if analyze:
+            try:
+                from services.news_analyzer import analyze_news_batch
+
+                # Convert articles to dictionaries with analysis field
+                article_dicts = []
+                analyzed_articles = analyze_news_batch(news_articles)
+
+                # Create a new list of article dictionaries with analysis field
+                for i, article in enumerate(news_articles):
+                    article_dict = article.dict()
+
+                    # Add analysis field from analyzed_articles if available
+                    if i < len(analyzed_articles) and "analysis" in analyzed_articles[i]:
+                        article_dict["analysis"] = analyzed_articles[i]["analysis"]
+                    else:
+                        article_dict["analysis"] = {}
+
+                    article_dicts.append(article_dict)
+
+                # Create result with articles including analysis field
+                result = {
+                    "query": query,
+                    "language": language,
+                    "country": country,
+                    "results": article_dicts,
+                    "count": len(article_dicts),
+                    "include_content": include_content
+                }
+
+                return result
+
+            except Exception as e:
+                # If analysis fails, log the error but continue with the regular response
+                logger.error(f"Article analysis failed: {str(e)}")
+                # Add empty analysis field to each article
+                article_dicts = []
+                for article in news_articles:
+                    article_dict = article.dict()
+                    article_dict["analysis"] = {}
+                    article_dicts.append(article_dict)
+
+                # Create result with articles including empty analysis field
+                result = {
+                    "query": query,
+                    "language": language,
+                    "country": country,
+                    "results": article_dicts,
+                    "count": len(article_dicts),
+                    "include_content": include_content
+                }
+
+                return result
+
+        # If no analysis requested, return standard response
         result = NewsSearchResults(
             query=query,
             language=language,

@@ -3,9 +3,9 @@ import os
 from pathlib import Path
 
 # Application settings
-APP_NAME = "Web Scraper API"
+APP_NAME = "Web Scraper & Analyzer API"
 APP_VERSION = "2.0.0"
-APP_DESCRIPTION = "API for scraping Facebook Marketplace, Groups, and News Articles"
+APP_DESCRIPTION = "API for scraping and analyzing web content including Marketplace, Groups, and News Articles"
 
 # Webdriver settings
 HEADLESS = os.getenv("HEADLESS_BROWSER", "false").lower() == "false"
@@ -28,9 +28,14 @@ DEFAULT_MAX_POSTS = 30
 DEFAULT_MAX_COMMENTS = 50
 
 # News defaults
-DEFAULT_NEWS_LANGUAGE = "es"
-DEFAULT_NEWS_COUNTRY = "MX"
+DEFAULT_NEWS_LANGUAGE = "es"  # Changed to Spanish as default
+DEFAULT_NEWS_COUNTRY = "MX"   # Changed to Mexico as default
 DEFAULT_NEWS_MAX_RESULTS = 5
+
+# LLM settings
+LLM_API_URL = os.getenv("LLM_API_URL", "http://localhost:11434/api/generate")
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-r1:14b")
+LLM_TIMEOUT = 30  # in seconds
 
 # Logging settings
 LOG_LEVEL = logging.INFO

@@ -5,3 +5,6 @@ from services.group_scraper import scrape_facebook_group
 from services.web_scraper import (
     fetch_google_news, extract_article_content, fetch_news_with_content
 )
+from services.news_analyzer import (
+    analyze_article_with_llm, analyze_news_batch
+)

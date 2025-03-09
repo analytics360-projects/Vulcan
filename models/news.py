@@ -13,6 +13,12 @@ class NewsArticle(BaseModel):
     summary: str = Field("", description="Brief summary or snippet from the article")
     article_content: Optional[str] = Field(None, description="Full article content")
     image_url: Optional[str] = Field(None, description="URL of the main article image")
+    analysis: Optional[Dict[str, Any]] = Field(default={}, description="LLM analysis results")
+
+
+class NewsArticleWithAnalysis(NewsArticle):
+    """Model for a news article with analysis"""
+    analysis: Dict[str, Any] = Field(default={}, description="LLM analysis results")
 
 
 class NewsSearchResults(BaseModel):
@@ -21,5 +27,15 @@ class NewsSearchResults(BaseModel):
     language: str = Field(..., description="Language code")
     country: str = Field(..., description="Country code")
     results: List[NewsArticle] = Field([], description="List of articles found")
+    count: int = Field(0, description="Number of articles found")
+    include_content: bool = Field(False, description="Whether article content is included")
+
+
+class NewsSearchResultsWithAnalysis(BaseModel):
+    """Model for news search results with analysis"""
+    query: str = Field(..., description="Search query")
+    language: str = Field(..., description="Language code")
+    country: str = Field(..., description="Country code")
+    results: List[NewsArticleWithAnalysis] = Field([], description="List of articles found with analysis")
     count: int = Field(0, description="Number of articles found")
     include_content: bool = Field(False, description="Whether article content is included")
