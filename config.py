@@ -10,7 +10,7 @@ APP_DESCRIPTION = "API for scraping and analyzing web content including Marketpl
 # Webdriver settings
 HEADLESS = os.getenv("HEADLESS_BROWSER", "false").lower() == "false"
 WINDOW_SIZE = "1920,1080"
-DEFAULT_TIMEOUT = 30  # in seconds
+DEFAULT_TIMEOUT = 600  # in seconds
 BROWSER_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 # Scraping settings
@@ -35,7 +35,7 @@ DEFAULT_NEWS_MAX_RESULTS = 5
 # LLM settings
 LLM_API_URL = os.getenv("LLM_API_URL", "http://localhost:11434/api/generate")
 LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-r1:14b")
-LLM_TIMEOUT = 30  # in seconds
+LLM_TIMEOUT = 600  # in seconds
 
 # Logging settings
 LOG_LEVEL = logging.INFO

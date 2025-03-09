@@ -26,9 +26,11 @@ def analyze_article_with_llm(article: NewsArticle) -> Dict[str, Any]:
         # Prepare the content for analysis
         article_content = f"Título: {article.title}\n\nFuente: {article.source}\n\nContenido: {article.article_content}"
 
-        # Prepare the prompt
+        # Prepare the prompt with explicit instruction to respond in Spanish
         prompt = f"""Analiza el contenido de la siguiente noticia:
 {article_content}
+
+IMPORTANTE: Responde SOLAMENTE en español.
 
 Por favor, proporciona un análisis estructurado en formato JSON que incluya:
 
@@ -51,7 +53,7 @@ Por favor, proporciona un análisis estructurado en formato JSON que incluya:
 
 4. "resumen": Incluye una lista de "puntosClave" con 5 aspectos fundamentales de la noticia.
 
-Asegúrate de que la respuesta esté en formato JSON válido."""
+Asegúrate de que la respuesta esté en formato JSON válido y completamente en español."""
 
         # Prepare the LLM request
         payload = {
@@ -90,7 +92,10 @@ Asegúrate de que la respuesta esté en formato JSON válido."""
             else:
                 # If no JSON is found, return the raw text with a warning
                 logger.warning(f"Could not find JSON in LLM response: {analysis_text[:100]}...")
-                analysis = {"text": analysis_text, "warning": "Response was not in valid JSON format"}
+                analysis = {
+                    "texto": analysis_text,
+                    "advertencia": "La respuesta no estaba en formato JSON válido"
+                }
 
             return analysis
 
@@ -98,13 +103,13 @@ Asegúrate de que la respuesta esté en formato JSON válido."""
             # If we can't parse as JSON, return the raw text with error
             logger.error(f"JSON parse error: {str(e)}")
             return {
-                "text": llm_response.get("response", llm_response.get("output", "")),
-                "error": f"Failed to parse response as JSON: {str(e)}"
+                "texto": llm_response.get("response", llm_response.get("output", "")),
+                "error": f"Error al analizar respuesta como JSON: {str(e)}"
             }
 
     except Exception as e:
         logger.error(f"Error analyzing article: {str(e)}")
-        return {"error": f"Error analyzing article: {str(e)}"}
+        return {"error": f"Error al analizar artículo: {str(e)}"}
 
 
 def analyze_news_batch(articles: List[NewsArticle]) -> List[Dict[str, Any]]:
