@@ -28,32 +28,38 @@ def analyze_article_with_llm(article: NewsArticle) -> Dict[str, Any]:
 
         # Prepare the prompt with explicit instruction to respond in Spanish
         prompt = f"""Analiza el contenido de la siguiente noticia:
-{article_content}
+        {article_content}
 
-IMPORTANTE: Responde SOLAMENTE en español.
+        IMPORTANTE: 
+        1. Responde SOLAMENTE en español.
+        2. Tu respuesta debe ser un objeto JSON válido, sin texto adicional.
+        3. No incluyas comillas simples ('), solo usa comillas dobles (") para las cadenas.
+        4. No incluyas comentarios ni explicaciones fuera del JSON.
+        5. No uses propiedades sin comillas.
 
-Por favor, proporciona un análisis estructurado en formato JSON que incluya:
+        Proporciona un análisis estructurado en formato JSON que incluya:
 
-1. "categorias": Clasifica la noticia en una o más de las siguientes categorías:
-   - Negocios o lugares locales
-   - Empresas, organizaciones o instituciones
-   - Marcas o productos
-   - Artistas, bandas o figuras públicas
-   - Entretenimiento
-   - Causas o comunidades
+        1. "categorias": Array de strings. Clasifica la noticia en una o más de las siguientes categorías:
+           - "Negocios o lugares locales"
+           - "Empresas, organizaciones o instituciones"
+           - "Marcas o productos"
+           - "Artistas, bandas o figuras públicas"
+           - "Entretenimiento"
+           - "Causas o comunidades"
 
-2. "ubicaciones": Identifica y lista todas las ubicaciones geográficas mencionadas en la noticia.
+        2. "ubicaciones": Array de strings. Identifica todas las ubicaciones geográficas mencionadas.
 
-3. "analisisSemantico": Proporciona:
-   - "temasPrincipales": Lista de los temas principales tratados
-   - "tonalidad": Si la noticia es positiva, negativa o neutral
-   - "objetividad": Si el contenido es objetivo, subjetivo o mixto
-   - "enfasis": El enfoque principal del texto (informativo, análisis, opinión, denuncia)
-   - "longitudTexto": Número de caracteres en el texto
+        3. "analisisSemantico": Objeto con las siguientes propiedades:
+           - "temasPrincipales": Array de strings con los temas principales
+           - "tonalidad": String: "positiva", "negativa" o "neutral"
+           - "objetividad": String: "objetivo", "subjetivo" o "mixto"
+           - "enfasis": String: el enfoque principal ("informativo", "análisis", "opinión" o "denuncia")
+           - "longitudTexto": Number: cantidad de caracteres en el texto
 
-4. "resumen": Incluye una lista de "puntosClave" con 5 aspectos fundamentales de la noticia.
+        4. "resumen": Objeto con la propiedad "puntosClave" que contiene un array de 5 strings con los aspectos fundamentales
 
-Asegúrate de que la respuesta esté en formato JSON válido y completamente en español."""
+        Asegúrate de que tu respuesta sea JSON válido y esté completamente en español.
+        """
 
         # Prepare the LLM request
         payload = {
