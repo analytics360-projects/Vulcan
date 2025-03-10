@@ -41,6 +41,9 @@ RUN pip install -e .
 # Set environment variables
 ENV HEADLESS_BROWSER=false
 ENV PYTHONUNBUFFERED=1
+ENV LLM_API_URL=http://ollama:11434/api/generate
+ENV LLM_MODEL=deepseek-r1:1.5b
+ENV LLM_TIMEOUT=600
 
 # Expose port
 EXPOSE 8000
