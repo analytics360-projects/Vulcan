@@ -4,10 +4,10 @@
 docker build -t web-scraper-api .
 
 # Run the container
-docker run -d -p 8000:8000 \
+docker run -d \
+  --network host \
   --name web-scraper-container \
-  --add-host=host.docker.internal:host-gateway \
-  --env LLM_API_URL=http://host.docker.internal:11434/api/generate \
+  --env LLM_API_URL=http://localhost:11434/api/generate \
   web-scraper-api
 
 echo "Web Scraper API is running on http://localhost:8000"
