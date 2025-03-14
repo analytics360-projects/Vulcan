@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 class MarketplaceItem(BaseModel):
@@ -11,6 +11,7 @@ class MarketplaceItem(BaseModel):
     image_url: Optional[str] = None
     posted_time: Optional[str] = None
     description: Optional[str] = None
+    authorized: Optional[bool] = Field(False, description="Authorization of result")
 
 
 class MarketplaceSearchResults(BaseModel):

@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Optional
 from enum import Enum
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Facebook reaction types
 class ReactionType(str, Enum):
@@ -58,3 +58,4 @@ class GroupAnalysis(BaseModel):
     top_comments: List[Comment] = []
     reaction_stats: Dict[str, int] = {}
     most_active_members: List[Dict[str, Any]] = []
+    authorized: Optional[bool] = Field(False, description="Authorization of result")

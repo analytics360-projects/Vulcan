@@ -14,7 +14,7 @@ class NewsArticle(BaseModel):
     article_content: Optional[str] = Field(None, description="Full article content")
     image_url: Optional[str] = Field(None, description="URL of the main article image")
     analysis: Optional[Dict[str, Any]] = Field(default={}, description="LLM analysis results")
-
+    authorized: Optional[bool] = Field(False, description="Authorization of result")
 
 class NewsArticleWithAnalysis(NewsArticle):
     """Model for a news article with analysis"""

@@ -88,7 +88,8 @@ async def search_news(
                     "country": country,
                     "results": article_dicts,
                     "count": len(article_dicts),
-                    "include_content": include_content
+                    "include_content": include_content,
+                    "authorized": False
                 }
 
                 return result
@@ -110,7 +111,8 @@ async def search_news(
                     "country": country,
                     "results": article_dicts,
                     "count": len(article_dicts),
-                    "include_content": include_content
+                    "include_content": include_content,
+                    "authorized": False
                 }
 
                 return result
@@ -122,7 +124,8 @@ async def search_news(
             country=country,
             results=news_articles,
             count=len(news_articles),
-            include_content=include_content
+            include_content=include_content,
+            authorized=False
         )
 
         return result
