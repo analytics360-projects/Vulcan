@@ -46,6 +46,7 @@ class Post(BaseModel):
     image_url: Optional[str] = None
     likes_count: int = 0
     comments_count: int = 0
+    authorized: Optional[bool] = Field(False, description="Authorization of result")
 
 
 class GroupAnalysis(BaseModel):
@@ -58,4 +59,3 @@ class GroupAnalysis(BaseModel):
     top_comments: List[Comment] = []
     reaction_stats: Dict[str, int] = {}
     most_active_members: List[Dict[str, Any]] = []
-    authorized: Optional[bool] = Field(False, description="Authorization of result")

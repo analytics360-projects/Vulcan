@@ -576,7 +576,8 @@ def extract_post_data(post_element, driver) -> Optional[Post]:
             url=post_url or "",  # Ensure URL is not None
             image_url=image_url,
             likes_count=likes_count,
-            comments_count=comments_count
+            comments_count=comments_count,
+            authorized=False
         )
 
         return post
