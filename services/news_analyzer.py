@@ -129,11 +129,13 @@ def analyze_news_batch(articles: List[NewsArticle]) -> List[Dict[str, Any]]:
         List[Dict[str, Any]]: The analysis results for each article
     """
     analyzed_articles = []
+    articles_with_content = 0
+    total_articles = len(articles)
 
     for article in articles:
         try:
             # Skip articles without content
-            if not article.article_content or len(article.article_content.strip()) < 50:
+            if not article.article_content or len(article.article_content.strip()) < 10:
                 logger.warning(f"Skipping article with insufficient content: {article.title}")
                 article_dict = article.dict()
                 article_dict["analysis"] = {"error": "Insufficient content for analysis"}
@@ -142,6 +144,9 @@ def analyze_news_batch(articles: List[NewsArticle]) -> List[Dict[str, Any]]:
 
             # Create a copy of the article as a dictionary
             article_dict = article.dict()
+
+            # Count this as an article with content
+            articles_with_content += 1
 
             # Analyze the article
             analysis = analyze_article_with_llm(article)
@@ -161,4 +166,7 @@ def analyze_news_batch(articles: List[NewsArticle]) -> List[Dict[str, Any]]:
             article_dict["analysis"] = {"error": f"Analysis failed: {str(e)}"}
             analyzed_articles.append(article_dict)
 
-    return analyzed_articles
+    # Calculate percentage of articles with content
+    percentage = (articles_with_content / total_articles * 100) if total_articles > 0 else 0
+
+    return analyzed_articles, percentage

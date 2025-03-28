@@ -21,12 +21,12 @@ router = APIRouter(
 
 @router.get("/search", response_model=NewsSearchResults)
 async def search_news(
-    query: str = Query(..., description="Search query for news articles"),
-    language: str = Query("es", description="Language code"),
-    country: str = Query("MX", description="Country code"),
-    max_results: int = Query(5, description="Maximum number of results to return", ge=1, le=20),
-    include_content: bool = Query(False, description="Whether to include full article content"),
-    analyze: bool = Query(False, description="Whether to analyze articles with LLM")
+        query: str = Query(..., description="Search query for news articles"),
+        language: str = Query("es", description="Language code"),
+        country: str = Query("MX", description="Country code"),
+        max_results: int = Query(5, description="Maximum number of results to return", ge=1, le=20),
+        include_content: bool = Query(False, description="Whether to include full article content"),
+        analyze: bool = Query(False, description="Whether to analyze articles with LLM")
 ):
     """
     Search for news articles using Google News.
@@ -60,35 +60,26 @@ async def search_news(
         # Convert to model objects first
         news_articles = [NewsArticle(**article) for article in articles]
 
+        # Default percentage value
+        percentage = 0
+
         # If analyze is requested, try to analyze the articles
         if analyze:
             try:
                 from services.news_analyzer import analyze_news_batch
 
-                # Convert articles to dictionaries with analysis field
-                article_dicts = []
-                analyzed_articles = analyze_news_batch(news_articles)
-
-                # Create a new list of article dictionaries with analysis field
-                for i, article in enumerate(news_articles):
-                    article_dict = article.dict()
-
-                    # Add analysis field from analyzed_articles if available
-                    if i < len(analyzed_articles) and "analysis" in analyzed_articles[i]:
-                        article_dict["analysis"] = analyzed_articles[i]["analysis"]
-                    else:
-                        article_dict["analysis"] = {}
-
-                    article_dicts.append(article_dict)
+                # Get analyzed articles and percentage with content
+                analyzed_articles, percentage = analyze_news_batch(news_articles)
 
                 # Create result with articles including analysis field
                 result = {
                     "query": query,
                     "language": language,
                     "country": country,
-                    "results": article_dicts,
-                    "count": len(article_dicts),
+                    "results": analyzed_articles,
+                    "count": len(analyzed_articles),
                     "include_content": include_content,
+                    "percentage": percentage,
                     "authorized": False
                 }
 
@@ -112,12 +103,19 @@ async def search_news(
                     "results": article_dicts,
                     "count": len(article_dicts),
                     "include_content": include_content,
+                    "percentage": 0,  # Default to 0 if analysis fails
                     "authorized": False
                 }
 
                 return result
 
         # If no analysis requested, return standard response
+        # Calculate percentage for articles with content even if not analyzing
+        if include_content:
+            articles_with_content = sum(1 for article in news_articles
+                                        if article.article_content and len(article.article_content.strip()) >= 10)
+            percentage = (articles_with_content / len(news_articles) * 100) if news_articles else 0
+
         result = NewsSearchResults(
             query=query,
             language=language,
@@ -125,6 +123,7 @@ async def search_news(
             results=news_articles,
             count=len(news_articles),
             include_content=include_content,
+            percentage=percentage,
             authorized=False
         )
 

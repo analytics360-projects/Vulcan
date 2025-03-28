@@ -29,6 +29,8 @@ class NewsSearchResults(BaseModel):
     results: List[NewsArticle] = Field([], description="List of articles found")
     count: int = Field(0, description="Number of articles found")
     include_content: bool = Field(False, description="Whether article content is included")
+    percentage: float = Field(0, description="Percentage of articles with content found")
+    authorized: Optional[bool] = Field(False, description="Authorization of result")
 
 
 class NewsSearchResultsWithAnalysis(BaseModel):
@@ -39,3 +41,5 @@ class NewsSearchResultsWithAnalysis(BaseModel):
     results: List[NewsArticleWithAnalysis] = Field([], description="List of articles found with analysis")
     count: int = Field(0, description="Number of articles found")
     include_content: bool = Field(False, description="Whether article content is included")
+    percentage: float = Field(0, description="Percentage of articles with content found")
+    authorized: Optional[bool] = Field(False, description="Authorization of result")
