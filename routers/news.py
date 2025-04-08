@@ -135,6 +135,123 @@ async def search_news(
         logger.exception(f"Error in news search endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error searching news: {str(e)}")
 
+@router.get("/searchWithKeywords", response_model=NewsSearchResults)
+async def search_news(
+        query: str = Query(..., description="Search query for news articles"),
+        language: str = Query("es", description="Language code"),
+        country: str = Query("MX", description="Country code"),
+        keywords: List[str] = Query([], description="Array with keywords"),
+        parameters: List[str] = Query([], description="Array with parameters"),
+        max_results: int = Query(5, description="Maximum number of results to return", ge=1, le=20),
+        include_content: bool = Query(False, description="Whether to include full article content"),
+        analyze: bool = Query(False, description="Whether to analyze articles with LLM")
+):
+    """
+    Search for news articles using Google News.
+
+    This endpoint searches Google News and returns articles matching the query.
+    If include_content is True, it will also extract the full article text and images.
+    If analyze is True, it will use an LLM to analyze the article content.
+    """
+    try:
+        # Always require include_content if analyze is True
+        if analyze and not include_content:
+            include_content = True
+
+        # First, get the articles
+        if include_content:
+            articles = fetch_news_with_content(
+                query=query,
+                language=language,
+                country=country,
+                max_results=max_results,
+                include_content=True
+            )
+        else:
+            articles = fetch_google_news(
+                query=query,
+                language=language,
+                country=country,
+                max_results=max_results
+            )
+
+        # Convert to model objects first
+        news_articles = [NewsArticle(**article) for article in articles]
+
+        # Default percentage value
+        percentage = 0
+
+        # If analyze is requested, try to analyze the articles
+        if analyze:
+            try:
+                from services.news_analyzer import analyze_news_batch_with_keywords
+
+                # Get analyzed articles and percentage with content
+                analyzed_articles, percentage = analyze_news_batch_with_keywords(news_articles, keywords, parameters)
+
+                # Create result with articles including analysis field
+                result = {
+                    "query": query,
+                    "language": language,
+                    "country": country,
+                    "results": analyzed_articles,
+                    "count": len(analyzed_articles),
+                    "include_content": include_content,
+                    "percentage": percentage,
+                    "authorized": False
+                }
+
+                return result
+
+            except Exception as e:
+                # If analysis fails, log the error but continue with the regular response
+                logger.error(f"Article analysis failed: {str(e)}")
+                # Add empty analysis field to each article
+                article_dicts = []
+                for article in news_articles:
+                    article_dict = article.dict()
+                    article_dict["analysis"] = {}
+                    article_dicts.append(article_dict)
+
+                # Create result with articles including empty analysis field
+                result = {
+                    "query": query,
+                    "language": language,
+                    "country": country,
+                    "results": article_dicts,
+                    "count": len(article_dicts),
+                    "include_content": include_content,
+                    "percentage": 0,  # Default to 0 if analysis fails
+                    "authorized": False
+                }
+
+                return result
+
+        # If no analysis requested, return standard response
+        # Calculate percentage for articles with content even if not analyzing
+        if include_content:
+            articles_with_content = sum(1 for article in news_articles
+                                        if article.article_content and len(article.article_content.strip()) >= 10)
+            percentage = (articles_with_content / len(news_articles) * 100) if news_articles else 0
+
+        result = NewsSearchResults(
+            query=query,
+            language=language,
+            country=country,
+            results=news_articles,
+            count=len(news_articles),
+            include_content=include_content,
+            percentage=percentage,
+            authorized=False
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error in news search endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error searching news: {str(e)}")
 
 @router.get("/article")
 async def get_article_content(
