@@ -1,52 +1,41 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
-# Install Chrome and dependencies
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    unzip \
-    xvfb \
-    libgconf-2-4 \
-    libxi6 \
-    libglib2.0-0 \
-    libnss3 \
-    libfontconfig1 \
+# System dependencies: Chrome + Tor
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget gnupg2 curl unzip \
+    tor obfs4proxy \
+    libgconf-2-4 libxi6 libnss3 libfontconfig1 libxss1 \
+    libappindicator3-1 libasound2 libatk-bridge2.0-0 libgtk-3-0 \
+    xvfb procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chrome
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
+# Chrome
+RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Set display port to avoid crash
-ENV DISPLAY=:99
+# Tor config
+RUN mkdir -p /var/lib/tor-data && chmod 700 /var/lib/tor-data
+RUN printf "SocksPort 127.0.0.1:9050\nControlPort 127.0.0.1:9051\nDataDirectory /var/lib/tor-data\nRunAsDaemon 0\n" > /etc/tor/torrc
 
-# Copy requirements file
+# Python dependencies
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project files
+# Application
 COPY . .
 
-# Install the package in development mode
-RUN pip install -e .
-
-# Set environment variables
-ENV HEADLESS_BROWSER=false
+ENV HEADLESS_BROWSER=true
+ENV DISPLAY=:99
 ENV PYTHONUNBUFFERED=1
-ENV LLM_API_URL=http://localhost:11434/api/generate
-ENV LLM_MODEL=deepseek-r1:7b
-ENV LLM_TIMEOUT=6000
 
-# Expose port
 EXPOSE 8000
 
-# Run the application with uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Start: Tor → Xvfb → Uvicorn
+RUN printf '#!/bin/bash\ntor &\nsleep 5\nXvfb :99 -screen 0 1920x1080x24 &\nsleep 1\nexec uvicorn main:app --host 0.0.0.0 --port 8000\n' > /app/start.sh \
+    && chmod +x /app/start.sh
+
+CMD ["/bin/bash", "/app/start.sh"]
