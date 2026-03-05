@@ -15,15 +15,17 @@ def start_scheduler():
     from modules.scheduler.jobs.disable_tablets import run as tablets_run
     from modules.scheduler.jobs.disable_carbyne import run as carbyne_run
     from modules.scheduler.jobs.omitir_en_captura import run as omitir_run
+    from modules.scheduler.jobs.sla_deadline_monitor import run as sla_run
 
     _scheduler.add_job(parametros_run, IntervalTrigger(minutes=2), id="parametros_busqueda", name="Parametros Busqueda")
     _scheduler.add_job(ping_run, IntervalTrigger(minutes=10), id="ping_bitacora", name="Ping Bitacora")
     _scheduler.add_job(tablets_run, IntervalTrigger(minutes=59), id="disable_tablets", name="Disable Tablets")
     _scheduler.add_job(carbyne_run, IntervalTrigger(minutes=30), id="disable_carbyne", name="Disable Carbyne")
     _scheduler.add_job(omitir_run, IntervalTrigger(minutes=59), id="omitir_en_captura", name="Omitir En Captura")
+    _scheduler.add_job(sla_run, IntervalTrigger(minutes=15), id="sla_deadline_monitor", name="SLA Deadline Monitor")
 
     _scheduler.start()
-    logger.info("Scheduler started with 5 jobs")
+    logger.info("Scheduler started with 6 jobs")
 
 
 def stop_scheduler():
