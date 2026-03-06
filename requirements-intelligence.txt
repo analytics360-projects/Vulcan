@@ -1,0 +1,17 @@
+# ── Intelligence / AI (Hugin) ──
+# Install ONLY if you need the Intelligence module (face recognition, video, embeddings)
+# pip install -r requirements-intelligence.txt
+
+insightface>=0.7.3
+ultralytics>=8.1.0
+sentence-transformers>=2.2.0
+torch>=2.1.0
+torchvision>=0.16.0
+transformers>=4.36.0
+qdrant-client>=1.7.0
+neo4j>=5.15.0
+faster-whisper>=1.0.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+scipy>=1.11.0
+structlog>=23.2.0
