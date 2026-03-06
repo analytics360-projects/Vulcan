@@ -19,28 +19,13 @@ lxml>=4.9.2
 
 # ── RavenDB (Hades/SANS) ──
 ravendb>=5.2.4
+jsonpickle>=3.0.0
 
 # ── Tor / Dark Web (nyx-crawler) ──
 stem>=1.8.1
 pysocks>=1.7.1
 validators>=0.20.0
 html2text>=2020.1.16
-
-# ── Intelligence / AI (Hugin) ──
-insightface>=0.7.3
-ultralytics>=8.1.0
-sentence-transformers>=2.2.0
-torch>=2.1.0
-torchvision>=0.16.0
-transformers>=4.36.0
-qdrant-client>=1.7.0
-neo4j>=5.15.0
-minio>=7.2.0
-faster-whisper>=1.0.0
-opencv-python>=4.8.0
-numpy>=1.24.0
-scipy>=1.11.0
-structlog>=23.2.0
 
 # ── Scheduler (Skadi) ──
 apscheduler>=3.10.0
@@ -53,6 +38,9 @@ asyncpraw>=7.7.0
 
 # ── Public Records ──
 python-whois>=0.9.4
+
+# ── Storage ──
+minio>=7.2.0
 
 # ── Crypto ──
 cryptography>=40.0.1

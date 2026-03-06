@@ -100,9 +100,14 @@ from modules.groups.router import router as groups_router
 from modules.news.router import router as news_router
 from modules.sans.router import router as sans_router
 from modules.dark_web.router import router as darkweb_router
-from modules.intelligence.router_search import router as intel_search_router
-from modules.intelligence.router_objects import router as intel_objects_router
-from modules.intelligence.router_list import router as intel_list_router
+try:
+    from modules.intelligence.router_search import router as intel_search_router
+    from modules.intelligence.router_objects import router as intel_objects_router
+    from modules.intelligence.router_list import router as intel_list_router
+    _intel_available = True
+except ImportError as e:
+    logger.warning(f"Intelligence module not available (missing deps): {e}")
+    _intel_available = False
 from modules.scheduler.router import router as scheduler_router
 from modules.osint_social.router import router as social_router
 from modules.osint_specialized.router import router as search_router
@@ -116,9 +121,10 @@ app.include_router(groups_router)
 app.include_router(news_router)
 app.include_router(sans_router)
 app.include_router(darkweb_router)
-app.include_router(intel_search_router)
-app.include_router(intel_objects_router)
-app.include_router(intel_list_router)
+if _intel_available:
+    app.include_router(intel_search_router)
+    app.include_router(intel_objects_router)
+    app.include_router(intel_list_router)
 app.include_router(scheduler_router)
 app.include_router(social_router)
 app.include_router(search_router)

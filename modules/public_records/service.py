@@ -7,10 +7,17 @@ Sources: CURP, RFC, REPUVE, Buholegal, DENUE/INEGI, datos.gob.mx,
 import asyncio
 import hashlib
 from datetime import datetime
+from contextlib import contextmanager
 from config import logger
 from shared.rate_limiter import rate_limited
 from modules.public_records.models import PublicRecordResult
 import httpx
+
+
+def _get_driver_with_fallback(stealth=True):
+    """Get driver — try without proxy for .gob.mx sites that block Tor."""
+    from shared.webdriver import get_driver
+    return get_driver(stealth=stealth, use_proxy=False)
 
 
 # ────────────────────────────────────────────
@@ -34,10 +41,10 @@ async def search_curp(nombre: str, curp: str = None) -> PublicRecordResult:
                     )
 
         # Scrape CURP lookup page
-        from shared.webdriver import get_driver, human_delay, is_blocked
+        from shared.webdriver import human_delay, is_blocked
         from selenium.webdriver.common.by import By
 
-        with get_driver(stealth=True, use_proxy=True) as driver:
+        with _get_driver_with_fallback() as driver:
             driver.get("https://www.gob.mx/curp/")
             human_delay(2.0, 4.0)
             block = is_blocked(driver)
@@ -120,10 +127,10 @@ async def search_rfc(nombre: str, rfc: str = None) -> PublicRecordResult:
 async def search_repuve(placa: str = None, niv: str = None) -> PublicRecordResult:
     """Search REPUVE for stolen/registered vehicles."""
     try:
-        from shared.webdriver import get_driver, human_delay
+        from shared.webdriver import human_delay
         from selenium.webdriver.common.by import By
 
-        with get_driver(stealth=True, use_proxy=True) as driver:
+        with _get_driver_with_fallback() as driver:
             driver.get("https://www2.repuve.gob.mx:8443/ciudadania/")
             human_delay(2.0, 4.0)
 
@@ -173,10 +180,10 @@ async def search_repuve(placa: str = None, niv: str = None) -> PublicRecordResul
 async def search_buholegal(nombre: str) -> PublicRecordResult:
     """Search Buholegal.com for public legal records, complaints, lawsuits."""
     try:
-        from shared.webdriver import get_driver, human_delay
+        from shared.webdriver import human_delay
         from selenium.webdriver.common.by import By
 
-        with get_driver(stealth=True, use_proxy=True) as driver:
+        with _get_driver_with_fallback() as driver:
             # Buholegal search
             search_url = f"https://www.buholegal.com/buscar/?q={nombre.replace(' ', '+')}"
             driver.get(search_url)
@@ -226,10 +233,10 @@ async def search_buholegal(nombre: str) -> PublicRecordResult:
 async def search_poder_judicial(nombre: str) -> PublicRecordResult:
     """Search expedientes judiciales in CJF / Poder Judicial."""
     try:
-        from shared.webdriver import get_driver, human_delay
+        from shared.webdriver import human_delay
         from selenium.webdriver.common.by import By
 
-        with get_driver(stealth=True, use_proxy=True) as driver:
+        with _get_driver_with_fallback() as driver:
             # Consulta de expedientes CJF
             driver.get("https://www.cjf.gob.mx/micrositios/DGEPJ/paginas/serviciosenlinea.htm")
             human_delay(2.0, 4.0)
@@ -280,12 +287,16 @@ async def search_denue(nombre: str, zona: str = None) -> PublicRecordResult:
             if zona:
                 params["entidad"] = zona
 
-            # INEGI API v2
+            # INEGI DENUE API — public, no key needed
             area = "0"  # Nacional
             resp = await client.get(
                 f"https://www.inegi.org.mx/app/api/denue/v1/consulta/Buscar/{nombre}/{area}/1/50/0/0/0/true",
-                headers={"User-Agent": "Mozilla/5.0"},
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Accept": "application/json",
+                },
                 follow_redirects=True,
+                timeout=30,
             )
 
             results = []
@@ -314,11 +325,14 @@ async def search_denue(nombre: str, zona: str = None) -> PublicRecordResult:
 async def search_datos_gob(nombre: str) -> PublicRecordResult:
     """Search datos.gob.mx open data portal."""
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
                 "https://datos.gob.mx/busca/api/3/action/package_search",
                 params={"q": nombre, "rows": 20},
-                headers={"User-Agent": "Mozilla/5.0"},
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Accept": "application/json",
+                },
                 follow_redirects=True,
             )
             results = []
@@ -397,10 +411,10 @@ async def search_fiscalia(nombre: str) -> PublicRecordResult:
 async def search_proveedores_sancionados(nombre: str) -> PublicRecordResult:
     """Search SFP sanctioned suppliers/servants list."""
     try:
-        from shared.webdriver import get_driver, human_delay
+        from shared.webdriver import human_delay
         from selenium.webdriver.common.by import By
 
-        with get_driver(stealth=True, use_proxy=True) as driver:
+        with _get_driver_with_fallback() as driver:
             # Plataforma Digital Nacional — servidores sancionados
             driver.get("https://www.plataformadigitalnacional.org/servidores")
             human_delay(2.0, 4.0)
@@ -584,13 +598,14 @@ async def search_google_legal(nombre: str) -> PublicRecordResult:
             f'"{nombre}" denuncia OR demanda OR sentencia OR expediente',
             f'"{nombre}" site:poderjudicialfederacion.gob.mx',
             f'"{nombre}" antecedentes OR investigacion OR proceso penal',
-            f'"{nombre}" site:dof.gob.mx',  # Diario Oficial de la Federacion
+            f'"{nombre}" site:dof.gob.mx',
         ]
 
         all_results = []
         for dork in dorks:
             try:
-                results = await search_google(query=dork, max_results=5)
+                # search_google is sync, not async
+                results = search_google(query=dork, max_results=5)
                 for r in results:
                     all_results.append(r.model_dump() if hasattr(r, "model_dump") else r)
             except Exception as e:
@@ -611,11 +626,13 @@ async def search_google_legal(nombre: str) -> PublicRecordResult:
 async def search_dof(nombre: str) -> PublicRecordResult:
     """Search Diario Oficial de la Federacion."""
     try:
-        from shared.webdriver import get_driver, human_delay
+        from shared.webdriver import human_delay
         from selenium.webdriver.common.by import By
 
-        with get_driver(stealth=True, use_proxy=True) as driver:
-            driver.get(f"https://www.dof.gob.mx/busqueda_detalle.php?busqueda={nombre.replace(' ', '+')}&tipo=T")
+        with _get_driver_with_fallback() as driver:
+            from urllib.parse import quote_plus
+            search_term = nombre.replace(' ', '+') if len(nombre) <= 40 else nombre[:40].replace(' ', '+')
+            driver.get(f"https://www.dof.gob.mx/busqueda_detalle.php?busqueda={quote_plus(nombre)}&tipo=T")
             human_delay(3.0, 5.0)
 
             results = []
@@ -649,10 +666,10 @@ async def search_dof(nombre: str) -> PublicRecordResult:
 async def search_compranet(nombre: str) -> PublicRecordResult:
     """Search Compranet for public procurement contracts."""
     try:
-        from shared.webdriver import get_driver, human_delay
+        from shared.webdriver import human_delay
         from selenium.webdriver.common.by import By
 
-        with get_driver(stealth=True, use_proxy=True) as driver:
+        with _get_driver_with_fallback() as driver:
             driver.get("https://compranet.hacienda.gob.mx/esop/guest/go/public/opportunity/past")
             human_delay(3.0, 5.0)
 
