@@ -17,6 +17,13 @@ async def search(username: str = None, query: str = None, max_results: int = 10)
         from selenium.webdriver.common.by import By
 
         with get_driver(stealth=True, use_proxy=True) as driver:
+            # Try to login with an available TikTok account
+            try:
+                from shared.social_account_manager import social_account_manager
+                social_account_manager.ensure_logged_in(driver, "tiktok")
+            except Exception as login_err:
+                logger.debug(f"TikTok login skipped (no accounts or error): {login_err}")
+
             if username:
                 driver.get(f"https://www.tiktok.com/@{username}")
                 human_delay(3.0, 5.0)

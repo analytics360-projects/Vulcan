@@ -17,6 +17,13 @@ async def search(username: str = None, hashtag: str = None, max_results: int = 1
         from selenium.webdriver.common.by import By
 
         with get_driver(stealth=True, use_proxy=True) as driver:
+            # Try to login with an available Instagram account
+            try:
+                from shared.social_account_manager import social_account_manager
+                social_account_manager.ensure_logged_in(driver, "instagram")
+            except Exception as login_err:
+                logger.debug(f"Instagram login skipped (no accounts or error): {login_err}")
+
             if username:
                 driver.get(f"https://www.instagram.com/{username}/")
                 human_delay(3.0, 5.0)

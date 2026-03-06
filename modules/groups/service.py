@@ -1410,7 +1410,14 @@ def scrape_facebook_group(
     Raises:
         HTTPException: If there's an error accessing the page
     """
-    with get_driver() as driver:
+    with get_driver(stealth=True, use_proxy=True) as driver:
+        # Ensure we have an active Facebook session
+        try:
+            from shared.fb_account_manager import fb_account_manager
+            fb_account_manager.ensure_logged_in(driver)
+        except Exception as e:
+            logger.warning(f"FB account login skipped: {e}")
+
         # Construct the group URL
         url = f'https://www.facebook.com/groups/{group_id}'
 

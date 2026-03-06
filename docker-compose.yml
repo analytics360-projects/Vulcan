@@ -109,9 +109,11 @@ services:
     environment:
       POSTGRES_USER: vulcan
       POSTGRES_PASSWORD: vulcan_pg_2024
-      POSTGRES_DB: vulcan_scheduler
+      POSTGRES_DB: vulcan
+      POSTGRES_MULTIPLE_DATABASES: vulcan,vulcan_scheduler
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres-init.sh:/docker-entrypoint-initdb.d/init.sh
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U vulcan"]
       interval: 10s
@@ -134,7 +136,7 @@ services:
       - minio-data:/data
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 10s
       timeout: 5s
       retries: 5

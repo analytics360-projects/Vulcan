@@ -62,8 +62,17 @@ async def lifespan(app: FastAPI):
     # 5. Dark Web / Tor (lazy — just mark available)
     _set_status("tor", True, "lazy init on first request")
 
-    # 5. OSINT modules — stateless, always available
-    for mod in ["marketplace", "groups", "news", "osint_social", "osint_specialized", "google_search", "person_search", "gaming", "public_records"]:
+    # 6. Social Account Manager (Facebook, Instagram, TikTok)
+    try:
+        from shared.social_account_manager import social_account_manager
+        social_account_manager.init()
+        _set_status("social_accounts", True)
+    except Exception as e:
+        logger.warning(f"Social Account Manager init failed (login degraded): {e}")
+        _set_status("social_accounts", False, str(e))
+
+    # 7. OSINT modules — stateless, always available
+    for mod in ["marketplace", "groups", "news", "osint_social", "osint_specialized", "google_search", "person_search", "gaming", "public_records", "sentiment", "geo", "monitoring"]:
         _set_status(mod, True)
 
     logger.info(f"Vulcan ready — {sum(1 for s in module_status.values() if s['available'])}/{len(module_status)} modules OK")
@@ -115,6 +124,11 @@ from modules.google_search.router import router as google_router
 from modules.person_search.router import router as person_router
 from modules.gaming.router import router as gaming_router
 from modules.public_records.router import router as records_router
+from modules.fb_accounts.router import router as fb_accounts_router
+from modules.social_accounts.router import router as social_accounts_router
+from modules.sentiment.router import router as sentiment_router
+from modules.geo.router import router as geo_router
+from modules.monitoring.router import router as monitoring_router
 
 app.include_router(marketplace_router)
 app.include_router(groups_router)
@@ -132,6 +146,11 @@ app.include_router(google_router)
 app.include_router(person_router)
 app.include_router(gaming_router)
 app.include_router(records_router)
+app.include_router(fb_accounts_router)
+app.include_router(social_accounts_router)
+app.include_router(sentiment_router)
+app.include_router(geo_router)
+app.include_router(monitoring_router)
 
 
 @app.get("/")

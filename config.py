@@ -77,6 +77,7 @@ class Settings(BaseSettings):
     # ── Scheduler (Skadi) ──
     balder_api_url: str = "http://localhost:5001/api"
     postgres_connection_string: str = ""
+    postgres_main_connection_string: str = ""
     scheduler_enabled: bool = True
 
     # ── OSINT API Keys ──

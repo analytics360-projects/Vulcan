@@ -25,6 +25,13 @@ def scrape_marketplace(
     max_scroll_attempts = max_scroll_attempts or settings.max_scroll_attempts
 
     with get_driver(stealth=True, use_proxy=True) as driver:
+        # Ensure we have an active Facebook session
+        try:
+            from shared.fb_account_manager import fb_account_manager
+            fb_account_manager.ensure_logged_in(driver)
+        except Exception as e:
+            logger.warning(f"FB account login skipped: {e}")
+
         url = (
             f"https://www.facebook.com/marketplace/{city}/search?"
             f"query={product}&minPrice={min_price}&maxPrice={max_price}"
