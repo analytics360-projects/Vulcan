@@ -51,5 +51,8 @@ tweepy>=4.14.0
 telethon>=1.34.0
 asyncpraw>=7.7.0
 
+# ── Public Records ──
+python-whois>=0.9.4
+
 # ── Crypto ──
 cryptography>=40.0.1

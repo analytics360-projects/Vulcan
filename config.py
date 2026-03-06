@@ -91,6 +91,15 @@ class Settings(BaseSettings):
     hunter_api_key: str = ""
     hibp_api_key: str = ""
 
+    # ── Proxy Rotation ──
+    proxy_enabled: bool = True
+    proxy_list: str = ""  # comma-separated: socks5://host:port,http://user:pass@host:port
+    brightdata_proxy_url: str = ""  # e.g. http://user:pass@brd.superproxy.io:22225
+
+    # ── Google Search / Captures ──
+    captures_dir: str = "/app/captures"
+    max_google_captures: int = 5
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

@@ -15,6 +15,7 @@ PLATFORM_LIMITS = {
     "numverify": {"rate": 1.0, "burst": 5},
     "hunter": {"rate": 1.0, "burst": 5},
     "hibp": {"rate": 6.0, "burst": 1},
+    "google": {"rate": 3.0, "burst": 3},
     "default": {"rate": 1.0, "burst": 10},
 }
 

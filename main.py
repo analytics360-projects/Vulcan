@@ -50,11 +50,20 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Scheduler init failed: {e}")
             _set_status("scheduler", False, str(e))
 
-    # 4. Dark Web / Tor (lazy — just mark available)
+    # 4. Proxy Manager
+    try:
+        from shared.proxy_manager import proxy_manager
+        proxy_manager.init()
+        _set_status("proxy", True, f"{proxy_manager.status['healthy_proxies']} proxies available")
+    except Exception as e:
+        logger.warning(f"Proxy manager init failed: {e}")
+        _set_status("proxy", False, str(e))
+
+    # 5. Dark Web / Tor (lazy — just mark available)
     _set_status("tor", True, "lazy init on first request")
 
     # 5. OSINT modules — stateless, always available
-    for mod in ["marketplace", "groups", "news", "osint_social", "osint_specialized"]:
+    for mod in ["marketplace", "groups", "news", "osint_social", "osint_specialized", "google_search", "person_search", "gaming", "public_records"]:
         _set_status(mod, True)
 
     logger.info(f"Vulcan ready — {sum(1 for s in module_status.values() if s['available'])}/{len(module_status)} modules OK")
@@ -97,6 +106,10 @@ from modules.intelligence.router_list import router as intel_list_router
 from modules.scheduler.router import router as scheduler_router
 from modules.osint_social.router import router as social_router
 from modules.osint_specialized.router import router as search_router
+from modules.google_search.router import router as google_router
+from modules.person_search.router import router as person_router
+from modules.gaming.router import router as gaming_router
+from modules.public_records.router import router as records_router
 
 app.include_router(marketplace_router)
 app.include_router(groups_router)
@@ -109,6 +122,10 @@ app.include_router(intel_list_router)
 app.include_router(scheduler_router)
 app.include_router(social_router)
 app.include_router(search_router)
+app.include_router(google_router)
+app.include_router(person_router)
+app.include_router(gaming_router)
+app.include_router(records_router)
 
 
 @app.get("/")
@@ -128,6 +145,30 @@ async def health():
         "timestamp": datetime.now().isoformat(),
         "modules": module_status,
     }
+
+
+@app.get("/proxy/status")
+async def proxy_status():
+    """Estado del pool de proxies y Tor."""
+    try:
+        from shared.proxy_manager import proxy_manager
+        status = proxy_manager.status
+        status["tor_ip"] = proxy_manager.get_tor_ip()
+        return status
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/proxy/rotate")
+async def proxy_rotate():
+    """Rotar circuito Tor para obtener nueva IP."""
+    try:
+        from shared.proxy_manager import proxy_manager
+        success = proxy_manager.rotate_tor()
+        new_ip = proxy_manager.get_tor_ip() if success else None
+        return {"rotated": success, "new_ip": new_ip}
+    except Exception as e:
+        return {"rotated": False, "error": str(e)}
 
 
 if __name__ == "__main__":

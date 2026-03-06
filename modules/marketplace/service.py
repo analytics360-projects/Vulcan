@@ -24,7 +24,7 @@ def scrape_marketplace(
     max_results = max_results or settings.max_results
     max_scroll_attempts = max_scroll_attempts or settings.max_scroll_attempts
 
-    with get_driver() as driver:
+    with get_driver(stealth=True, use_proxy=True) as driver:
         url = (
             f"https://www.facebook.com/marketplace/{city}/search?"
             f"query={product}&minPrice={min_price}&maxPrice={max_price}"
