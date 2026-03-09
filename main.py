@@ -72,7 +72,7 @@ async def lifespan(app: FastAPI):
         _set_status("social_accounts", False, str(e))
 
     # 7. OSINT modules — stateless, always available
-    for mod in ["marketplace", "groups", "news", "osint_social", "osint_specialized", "google_search", "person_search", "gaming", "public_records", "sentiment", "geo", "monitoring"]:
+    for mod in ["marketplace", "groups", "news", "osint_social", "osint_specialized", "google_search", "person_search", "gaming", "public_records", "sentiment", "geo", "monitoring", "vehicle_osint"]:
         _set_status(mod, True)
 
     logger.info(f"Vulcan ready — {sum(1 for s in module_status.values() if s['available'])}/{len(module_status)} modules OK")
@@ -129,6 +129,7 @@ from modules.social_accounts.router import router as social_accounts_router
 from modules.sentiment.router import router as sentiment_router
 from modules.geo.router import router as geo_router
 from modules.monitoring.router import router as monitoring_router
+from modules.vehicle_osint.router import router as vehicle_osint_router
 
 app.include_router(marketplace_router)
 app.include_router(groups_router)
@@ -151,6 +152,7 @@ app.include_router(social_accounts_router)
 app.include_router(sentiment_router)
 app.include_router(geo_router)
 app.include_router(monitoring_router)
+app.include_router(vehicle_osint_router)
 
 
 @app.get("/")

@@ -18,6 +18,7 @@ def start_scheduler():
     from modules.scheduler.jobs.sla_deadline_monitor import run as sla_run
     from modules.scheduler.jobs.mia_batch_processor import run as mia_batch_run
     from modules.scheduler.jobs.plate_batch_processor import run as plate_batch_run
+    from modules.scheduler.jobs.dossier_batch_processor import run as dossier_batch_run
 
     _scheduler.add_job(parametros_run, IntervalTrigger(minutes=2), id="parametros_busqueda", name="Parametros Busqueda")
     _scheduler.add_job(ping_run, IntervalTrigger(minutes=10), id="ping_bitacora", name="Ping Bitacora")
@@ -27,9 +28,10 @@ def start_scheduler():
     _scheduler.add_job(sla_run, IntervalTrigger(minutes=15), id="sla_deadline_monitor", name="SLA Deadline Monitor")
     _scheduler.add_job(mia_batch_run, IntervalTrigger(seconds=30), id="mia_batch_processor", name="MIA Batch Processor")
     _scheduler.add_job(plate_batch_run, IntervalTrigger(seconds=30), id="plate_batch_processor", name="Plate Batch Processor")
+    _scheduler.add_job(dossier_batch_run, IntervalTrigger(seconds=30), id="dossier_batch_processor", name="Dossier Batch Processor")
 
     _scheduler.start()
-    logger.info("Scheduler started with 8 jobs")
+    logger.info("Scheduler started with 9 jobs")
 
 
 def stop_scheduler():
