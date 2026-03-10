@@ -24,7 +24,7 @@ RUN printf "SocksPort 127.0.0.1:9050\nControlPort 127.0.0.1:9051\nDataDirectory 
 # Then install everything else, using --no-build-isolation for packages that
 # build from source (insightface) so they use our pinned numpy, not their own
 COPY requirements.txt .
-RUN pip install --no-cache-dir "numpy<2.0" \
+RUN pip install --no-cache-dir "numpy<2.0" Cython \
     && pip install --no-cache-dir --no-build-isolation insightface>=0.7.3 \
     && pip install --no-cache-dir -r requirements.txt
 
