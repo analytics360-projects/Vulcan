@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2t64 libatk-bridge2.0-0 libgtk-3-0 \
     libgbm1 libvulkan1 fonts-liberation \
     xvfb procps \
+    build-essential g++ \
     && rm -rf /var/lib/apt/lists/*
 
 # Tor config
@@ -19,8 +20,13 @@ RUN mkdir -p /var/lib/tor-data && chmod 700 /var/lib/tor-data
 RUN printf "SocksPort 127.0.0.1:9050\nControlPort 127.0.0.1:9051\nDataDirectory /var/lib/tor-data\nRunAsDaemon 0\n" > /etc/tor/torrc
 
 # Python dependencies
+# Install numpy<2.0 first — server CPU lacks X86_V2 instructions required by numpy 2.x
+# Then install everything else, using --no-build-isolation for packages that
+# build from source (insightface) so they use our pinned numpy, not their own
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir "numpy<2.0" \
+    && pip install --no-cache-dir --no-build-isolation insightface>=0.7.3 \
+    && pip install --no-cache-dir -r requirements.txt
 
 # Application
 COPY . .
