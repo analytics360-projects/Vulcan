@@ -44,6 +44,15 @@ python-whois>=0.9.4
 # ── Storage ──
 minio>=7.2.0
 
+# ── Intelligence (Neo4j, Qdrant, Vision) ──
+neo4j>=5.14.0
+qdrant-client>=1.7.0
+opencv-python-headless>=4.8.0
+Pillow>=10.0.0
+ultralytics>=8.0.0
+insightface>=0.7.3
+onnxruntime>=1.16.0
+
 # ── Logging ──
 structlog>=23.2.0
 
