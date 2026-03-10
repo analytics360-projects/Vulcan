@@ -3,12 +3,14 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # System dependencies: Chromium + Tor + headless support
+# Also includes libs needed by undetected-chromedriver (downloads its own Chrome)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget gnupg2 curl unzip \
     tor obfs4proxy \
     chromium chromium-driver \
     libxi6 libnss3 libfontconfig1 libxss1 \
     libasound2t64 libatk-bridge2.0-0 libgtk-3-0 \
+    libgbm1 libvulkan1 fonts-liberation \
     xvfb procps \
     && rm -rf /var/lib/apt/lists/*
 

@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     postgres_main_connection_string: str = ""
     scheduler_enabled: bool = True
 
+    # ── People Data Labs (PDL) ──
+    pdl_api_key: str = ""
+
     # ── OSINT API Keys ──
     twitter_bearer_token: str = ""
     instagram_access_token: str = ""
@@ -96,6 +99,11 @@ class Settings(BaseSettings):
     proxy_enabled: bool = True
     proxy_list: str = ""  # comma-separated: socks5://host:port,http://user:pass@host:port
     brightdata_proxy_url: str = ""  # e.g. http://user:pass@brd.superproxy.io:22225
+    residential_proxy_url: str = ""  # residential proxy for WAF-protected sites (REPUVE, etc.)
+
+    # ── CAPTCHA Solving ──
+    captcha_api_key: str = ""  # 2captcha.com API key for reCAPTCHA solving
+    captcha_service: str = "2captcha"  # "2captcha" or "anti-captcha"
 
     # ── Google Search / Captures ──
     captures_dir: str = "/app/captures"

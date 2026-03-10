@@ -19,8 +19,25 @@ class VinDecodeResult(BaseModel):
 class RepuveResult(BaseModel):
     placa: Optional[str] = None
     niv: Optional[str] = None
+    nci: Optional[str] = None
     estatus: Optional[str] = None  # "registrado" | "robado" | "no_encontrado" | "error"
+    marca: Optional[str] = None
+    modelo: Optional[str] = None
+    anio: Optional[str] = None
+    clase: Optional[str] = None
+    tipo: Optional[str] = None
     entidad: Optional[str] = None
+    version: Optional[str] = None
+    puertas: Optional[str] = None
+    pais_origen: Optional[str] = None
+    desplazamiento: Optional[str] = None
+    cilindros: Optional[str] = None
+    planta_ensamble: Optional[str] = None
+    institucion_inscripcion: Optional[str] = None
+    fecha_inscripcion: Optional[str] = None
+    fecha_emplacado: Optional[str] = None
+    fecha_actualizacion: Optional[str] = None
+    datos_complementarios: Optional[str] = None
     detalles: Optional[str] = None
     url_fuente: str = "https://www2.repuve.gob.mx:8443/ciudadania/"
     error: Optional[str] = None

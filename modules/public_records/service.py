@@ -15,9 +15,9 @@ import httpx
 
 
 def _get_driver_with_fallback(stealth=True):
-    """Get driver — try without proxy for .gob.mx sites that block Tor."""
+    """Get driver — stealth mode for .gob.mx sites, no proxy (they block Tor)."""
     from shared.webdriver import get_driver
-    return get_driver(stealth=stealth, use_proxy=False)
+    return get_driver(stealth=True, use_proxy=False)
 
 
 # ────────────────────────────────────────────
@@ -122,53 +122,282 @@ async def search_rfc(nombre: str, rfc: str = None) -> PublicRecordResult:
 
 # ────────────────────────────────────────────
 # 3. REPUVE — Registro Publico Vehicular
+#    Uses undetected-chromedriver to bypass WAF bot detection.
+#    The WAF blocks standard Selenium by serving HTML instead of JS files,
+#    preventing Angular from bootstrapping.
 # ────────────────────────────────────────────
+
+def _repuve_search_value(driver, value: str, search_type: str) -> str | None:
+    """
+    Perform a single REPUVE search (placa or NIV) using undetected-chromedriver.
+    Returns the body text after results load, or None on failure.
+    """
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from shared.webdriver import human_delay
+
+    logger.info(f"[REPUVE] Starting search: {search_type}={value}")
+
+    # Step 1: Navigate to REPUVE
+    try:
+        driver.get("https://www2.repuve.gob.mx:8443/ciudadania/")
+    except Exception as nav_err:
+        logger.warning(f"[REPUVE] Navigation failed: {nav_err}")
+        return None
+
+    logger.info(f"[REPUVE] URL: {driver.current_url} | Title: {driver.title}")
+
+    # Step 2: Wait for Angular to bootstrap — form inputs appear when ready
+    try:
+        WebDriverWait(driver, 20).until(
+            lambda d: d.find_elements(
+                By.CSS_SELECTOR, 'input[placeholder*="placa"], input[placeholder*="serie"]'
+            )
+        )
+        logger.info("[REPUVE] Angular bootstrapped — form inputs found")
+    except Exception:
+        # Log diagnostics on failure
+        body_text = ""
+        try:
+            body_text = driver.find_element(By.TAG_NAME, "body").text[:500]
+        except Exception:
+            pass
+        logger.warning(f"[REPUVE] Angular did NOT bootstrap within 20s. Body: {body_text}")
+        logger.warning(f"[REPUVE] Page source (500): {driver.page_source[:500]}")
+        return None
+
+    human_delay(1.0, 2.0)
+
+    # Step 3: Expand accordion if form is hidden
+    try:
+        toggle = driver.find_element(By.CSS_SELECTOR, "label[for='toggle1']")
+        driver.execute_script("arguments[0].click();", toggle)
+        logger.info("[REPUVE] Expanded accordion panel")
+        human_delay(0.5, 1.0)
+    except Exception:
+        # Accordion might not exist or form is already visible
+        try:
+            driver.execute_script("""
+                var t = document.getElementById('toggle1');
+                if (t && !t.checked) { t.checked = true; t.dispatchEvent(new Event('change')); }
+            """)
+        except Exception:
+            pass
+
+    # Step 4: Find the input field
+    if search_type == "placa":
+        selectors = [
+            'input[placeholder="Ingresa tu placa"]',
+            'input[placeholder*="placa"]',
+        ]
+    else:
+        selectors = [
+            'input[placeholder="Ingresa tu número de serie"]',
+            'input[placeholder*="serie"]',
+            'input[placeholder*="NIV"]',
+        ]
+
+    input_field = None
+    for sel in selectors:
+        try:
+            input_field = driver.find_element(By.CSS_SELECTOR, sel)
+            break
+        except Exception:
+            continue
+
+    if not input_field:
+        # Fallback: get all visible text inputs
+        text_inputs = [
+            inp for inp in driver.find_elements(By.CSS_SELECTOR, "input[type='text'], input:not([type])")
+            if inp.get_attribute("placeholder")
+        ]
+        idx = 0 if search_type == "placa" else min(1, len(text_inputs) - 1)
+        if text_inputs:
+            input_field = text_inputs[idx]
+            logger.info(f"[REPUVE] Using fallback input[{idx}]: {input_field.get_attribute('placeholder')}")
+        else:
+            logger.warning(f"[REPUVE] No input field found for {search_type}")
+            return None
+
+    # Step 5: Type the value — character by character to trigger Angular bindings
+    try:
+        input_field.click()
+        human_delay(0.2, 0.4)
+        input_field.clear()
+        for char in value:
+            input_field.send_keys(char)
+            human_delay(0.05, 0.15)
+        logger.info(f"[REPUVE] Typed '{value}' into {search_type} input")
+    except Exception as e:
+        # JS fallback for non-interactable elements
+        logger.warning(f"[REPUVE] send_keys failed ({e}), JS fallback")
+        driver.execute_script("""
+            var el = arguments[0]; el.value = arguments[1];
+            el.dispatchEvent(new Event('input', {bubbles: true}));
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+        """, input_field, value)
+
+    human_delay(0.5, 1.0)
+
+    # Step 6: Click search button
+    btn = None
+    for sel in ["//button[contains(., 'Buscar')]", "//button[contains(., 'buscar')]"]:
+        try:
+            btn = driver.find_element(By.XPATH, sel)
+            break
+        except Exception:
+            continue
+    if not btn:
+        try:
+            btn = driver.find_element(By.CSS_SELECTOR, "button.btn-primary")
+        except Exception:
+            pass
+
+    if btn:
+        try:
+            btn.click()
+        except Exception:
+            driver.execute_script("arguments[0].click();", btn)
+        logger.info("[REPUVE] Clicked search button")
+    else:
+        from selenium.webdriver.common.keys import Keys
+        input_field.send_keys(Keys.RETURN)
+        logger.info("[REPUVE] Submitted via ENTER (no button found)")
+
+    # Step 7: Handle reCAPTCHA
+    # REPUVE uses invisible reCAPTCHA v2 (sitekey: 6Lfy8AEoAAAAANclz0Doczn6y826fM0BjOPXEn9B).
+    # Strategy: wait briefly for auto-resolve, if it fails use captcha solving service.
+
+    human_delay(3.0, 5.0)
+
+    # Check if reCAPTCHA blocked us (error message appears)
+    body_after_click = driver.find_element(By.TAG_NAME, "body").text.lower()
+    recaptcha_failed = "recaptcha no fue superado" in body_after_click or "recaptcha" in body_after_click
+
+    if recaptcha_failed:
+        logger.info("[REPUVE] reCAPTCHA auto-resolve failed, using captcha solving service...")
+        from shared.captcha_solver import solve_recaptcha_v2_sync
+
+        token = solve_recaptcha_v2_sync(
+            site_key="6Lfy8AEoAAAAANclz0Doczn6y826fM0BjOPXEn9B",
+            page_url="https://www2.repuve.gob.mx:8443/ciudadania/",
+            invisible=True,
+        )
+
+        if token:
+            # Inject the solved token and re-submit
+            driver.execute_script(f"""
+                document.getElementById('g-recaptcha-response').value = '{token}';
+                // Trigger the reCAPTCHA callback that Angular listens for
+                if (typeof ___grecaptcha_cfg !== 'undefined') {{
+                    var clients = ___grecaptcha_cfg.clients;
+                    for (var key in clients) {{
+                        var client = clients[key];
+                        // Find the callback function
+                        function findCallback(obj) {{
+                            if (!obj || typeof obj !== 'object') return null;
+                            for (var k in obj) {{
+                                if (typeof obj[k] === 'function') return obj[k];
+                                var found = findCallback(obj[k]);
+                                if (found) return found;
+                            }}
+                            return null;
+                        }}
+                        var cb = findCallback(client);
+                        if (cb) {{ cb('{token}'); break; }}
+                    }}
+                }}
+            """)
+            logger.info("[REPUVE] Injected solved reCAPTCHA token, re-submitting...")
+
+            # Click search button again
+            try:
+                for sel in ["//button[contains(., 'Buscar')]", "//button[contains(., 'buscar')]"]:
+                    try:
+                        btn2 = driver.find_element(By.XPATH, sel)
+                        btn2.click()
+                        break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+            human_delay(3.0, 5.0)
+        else:
+            logger.warning("[REPUVE] Captcha solving not available/failed — results may be empty")
+
+    # Wait for results to render
+    try:
+        WebDriverWait(driver, 30).until(
+            lambda d: (
+                d.find_elements(By.CSS_SELECTOR, "table.table, .tab-pane, .table-responsive") or
+                any(kw in d.find_element(By.TAG_NAME, "body").text.lower()
+                    for kw in ["marca:", "niv:", "no se encontr", "sin resultado", "no existe",
+                               "número de identificación", "numero de identificacion"])
+            )
+        )
+        logger.info("[REPUVE] Results page detected")
+    except Exception:
+        logger.warning("[REPUVE] Timed out waiting for results (30s)")
+
+    human_delay(1.0, 2.0)
+
+    # Step 8: Extract results
+    body_text = driver.find_element(By.TAG_NAME, "body").text[:5000]
+    logger.info(f"[REPUVE] URL: {driver.current_url}")
+    logger.info(f"[REPUVE] Body ({len(body_text)} chars): {body_text[:400]}")
+
+    # Try to extract structured data from HTML table
+    try:
+        table = driver.find_element(By.CSS_SELECTOR, "table.table")
+        rows = table.find_elements(By.TAG_NAME, "tr")
+        logger.info(f"[REPUVE] Found result table: {len(rows)} rows")
+        for row in rows[:20]:
+            cells = row.find_elements(By.TAG_NAME, "td")
+            if len(cells) >= 2:
+                logger.info(f"[REPUVE]   {cells[0].text.strip()} → {cells[1].text.strip()}")
+    except Exception:
+        pass
+
+    return body_text
+
+
 @rate_limited("default")
 async def search_repuve(placa: str = None, niv: str = None) -> PublicRecordResult:
-    """Search REPUVE for stolen/registered vehicles."""
-    try:
-        from shared.webdriver import human_delay
-        from selenium.webdriver.common.by import By
+    """Search REPUVE using undetected-chromedriver to bypass WAF."""
+    import asyncio
 
-        with _get_driver_with_fallback() as driver:
-            driver.get("https://www2.repuve.gob.mx:8443/ciudadania/")
-            human_delay(2.0, 4.0)
-
+    def _run_repuve():
+        from shared.webdriver import get_undetected_driver
+        from config import settings as _settings
+        proxy_url = _settings.residential_proxy_url or None
+        with get_undetected_driver(use_proxy=False, proxy_url=proxy_url) as driver:
             results = {"placa": placa, "niv": niv}
 
             if placa:
-                try:
-                    input_placa = driver.find_element(By.ID, "placa")
-                    input_placa.clear()
-                    input_placa.send_keys(placa)
-                    human_delay(1.0, 2.0)
-                    btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")
-                    btn.click()
-                    human_delay(3.0, 5.0)
-                    results["resultado_placa"] = driver.find_element(By.TAG_NAME, "body").text[:2000]
-                except Exception as e:
-                    results["placa_error"] = str(e)
+                body_text = _repuve_search_value(driver, placa, "placa")
+                if body_text:
+                    results["resultado_placa"] = body_text
+                else:
+                    results["placa_error"] = "No se pudo buscar la placa en REPUVE"
 
             if niv:
-                try:
-                    driver.get("https://www2.repuve.gob.mx:8443/ciudadania/")
-                    human_delay(2.0, 3.0)
-                    input_niv = driver.find_element(By.ID, "niv")
-                    input_niv.clear()
-                    input_niv.send_keys(niv)
-                    human_delay(1.0, 2.0)
-                    btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")
-                    btn.click()
-                    human_delay(3.0, 5.0)
-                    results["resultado_niv"] = driver.find_element(By.TAG_NAME, "body").text[:2000]
-                except Exception as e:
-                    results["niv_error"] = str(e)
+                body_text = _repuve_search_value(driver, niv, "niv")
+                if body_text:
+                    results["resultado_niv"] = body_text
+                else:
+                    results["niv_error"] = "No se pudo buscar el NIV en REPUVE"
 
             return PublicRecordResult(
                 fuente="REPUVE", tipo="vehiculo",
                 datos=results,
                 url_fuente="https://www2.repuve.gob.mx:8443/ciudadania/"
             )
+
+    try:
+        # Run blocking Selenium code in thread pool to not block event loop
+        return await asyncio.to_thread(_run_repuve)
     except Exception as e:
         return PublicRecordResult(fuente="REPUVE", tipo="vehiculo", disponible=False, error=str(e))
 

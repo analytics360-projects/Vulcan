@@ -49,6 +49,8 @@ def get_driver(stealth: bool = False, use_proxy: bool = False):
         options.add_argument(f"--window-size={settings.window_size}")
         options.add_argument("--disable-notifications")
         options.add_argument("--disable-popup-blocking")
+        options.add_argument("--ignore-certificate-errors")
+        options.add_argument("--allow-insecure-localhost")
 
         # Rotate user agent
         ua = random.choice(_USER_AGENTS)
@@ -59,6 +61,10 @@ def get_driver(stealth: bool = False, use_proxy: bool = False):
             options.add_experimental_option("excludeSwitches", ["enable-automation"])
             options.add_experimental_option("useAutomationExtension", False)
             options.add_argument("--lang=es-MX,es,en-US,en")
+            # Extra anti-detection for sites that check headless
+            options.add_argument("--disable-features=VizDisplayCompositor")
+            options.add_argument("--disable-web-security")
+            options.add_argument("--allow-running-insecure-content")
 
         # Proxy configuration
         if use_proxy:
@@ -218,3 +224,119 @@ def wait_for_clickable(driver, by, selector, timeout=None):
     return WebDriverWait(driver, timeout).until(
         EC.element_to_be_clickable((by, selector))
     )
+
+
+@contextmanager
+def get_undetected_driver(use_proxy: bool = False, proxy_url: str = None):
+    """
+    Create an undetected-chromedriver instance that bypasses WAF/bot detection.
+    Used for sites like REPUVE that block standard Selenium/headless Chrome.
+
+    undetected-chromedriver patches the Chrome binary to remove automation
+    indicators, making it indistinguishable from a regular browser.
+    """
+    import undetected_chromedriver as uc
+    import os
+
+    driver = None
+    proxy_obj = None
+    try:
+        chrome_options = uc.ChromeOptions()
+
+        # UC in headless mode — use Xvfb instead of --headless flag
+        # to avoid WAF headless detection. The Docker container runs Xvfb on :99.
+        # Only use --headless if explicitly no display is available.
+        use_xvfb = os.environ.get("DISPLAY") is not None
+        if settings.headless_browser and not use_xvfb:
+            chrome_options.add_argument("--headless=new")
+
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument(f"--window-size={settings.window_size}")
+        chrome_options.add_argument("--disable-notifications")
+        chrome_options.add_argument("--disable-popup-blocking")
+        chrome_options.add_argument("--ignore-certificate-errors")
+        chrome_options.add_argument("--allow-insecure-localhost")
+        chrome_options.add_argument("--lang=es-MX,es,en-US,en")
+
+        # Proxy — explicit URL takes priority, then proxy_manager
+        effective_proxy = proxy_url
+        if not effective_proxy and use_proxy:
+            try:
+                from shared.proxy_manager import proxy_manager
+                proxy_obj = proxy_manager.get_proxy()
+                if proxy_obj:
+                    effective_proxy = proxy_obj.as_selenium_arg()
+                    logger.info(
+                        f"UC WebDriver using proxy: "
+                        f"{proxy_obj.proxy_type.value}://{proxy_obj.address}:{proxy_obj.port}"
+                    )
+            except Exception as e:
+                logger.warning(f"UC proxy setup failed, going direct: {e}")
+
+        if effective_proxy:
+            chrome_options.add_argument(f"--proxy-server={effective_proxy}")
+
+        chrome_bin = os.environ.get("CHROME_BIN")
+        if chrome_bin:
+            chrome_options.binary_location = chrome_bin
+
+        # Detect Chromium version for UC to download matching chromedriver
+        version_main = None
+        if chrome_bin:
+            try:
+                import subprocess
+                ver_output = subprocess.check_output(
+                    [chrome_bin, "--version"], text=True, timeout=5
+                ).strip()
+                # e.g. "Chromium 131.0.6778.204" → 131
+                version_main = int(ver_output.split()[1].split(".")[0])
+                logger.info(f"UC: Detected Chrome/Chromium version {version_main}")
+            except Exception as ve:
+                logger.warning(f"UC: Could not detect Chrome version: {ve}")
+
+        # UC patches the chromedriver binary to remove automation markers.
+        # Copy system chromedriver to a writable location so UC can patch it
+        # without conflicting with standard Selenium instances running in parallel.
+        uc_driver_path = None
+        chromedriver_path = os.environ.get("CHROMEDRIVER_PATH")
+        if chromedriver_path and os.path.exists(chromedriver_path):
+            import shutil
+            uc_dir = "/tmp/uc_chromedriver"
+            os.makedirs(uc_dir, exist_ok=True)
+            uc_driver_path = os.path.join(uc_dir, "chromedriver")
+            if not os.path.exists(uc_driver_path):
+                shutil.copy2(chromedriver_path, uc_driver_path)
+                os.chmod(uc_driver_path, 0o755)
+                logger.info(f"UC: Copied chromedriver to {uc_driver_path}")
+
+        driver = uc.Chrome(
+            options=chrome_options,
+            version_main=version_main,
+            driver_executable_path=uc_driver_path,
+            browser_executable_path=chrome_bin if chrome_bin else None,
+        )
+        driver.set_page_load_timeout(settings.default_timeout)
+
+        yield driver
+
+        # Mark proxy as successful
+        if proxy_obj:
+            from shared.proxy_manager import proxy_manager
+            proxy_manager.mark_success(proxy_obj)
+
+    except Exception as e:
+        if proxy_obj:
+            try:
+                from shared.proxy_manager import proxy_manager
+                proxy_manager.mark_failed(proxy_obj)
+            except Exception:
+                pass
+        logger.error(f"Error setting up UC WebDriver: {e}")
+        raise
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass

@@ -23,7 +23,19 @@ async def _search_instagram(username: str = None) -> PlatformResult:
         if not health.available:
             return PlatformResult(plataforma="instagram", disponible=False, error=health.reason)
         results = await search(username=username)
-        return PlatformResult(plataforma="instagram", disponible=True, resultados=[r.model_dump() for r in results])
+        resultados = [r.model_dump() for r in results]
+
+        # Enrich with Toutatis (phone, email, extended data)
+        if username:
+            try:
+                from modules.osint_tools.service import enrich_instagram
+                enrichment = await enrich_instagram(username)
+                if not enrichment.error:
+                    resultados.append({"_toutatis_enrichment": enrichment.model_dump()})
+            except Exception as e:
+                logger.warning(f"Toutatis enrichment failed for {username}: {e}")
+
+        return PlatformResult(plataforma="instagram", disponible=True, resultados=resultados)
     except Exception as e:
         return PlatformResult(plataforma="instagram", disponible=False, error=str(e))
 
@@ -159,6 +171,65 @@ async def _search_gaming(username: str) -> PlatformResult:
         return PlatformResult(plataforma="gaming", disponible=False, error=str(e))
 
 
+async def _search_username_enum(username: str) -> PlatformResult:
+    """Enumerate username across 400+ platforms (findme) + enrich top profiles with socid-extractor."""
+    try:
+        from modules.username_enum.service import enumerate_username
+        result = await enumerate_username(username, max_concurrent=50)
+
+        platforms_found = [h.model_dump() for h in result.platforms_found]
+
+        # Enrich top 10 found profiles with socid-extractor
+        profile_extractions = []
+        try:
+            from modules.osint_tools.service import extract_profiles_batch
+            top_urls = [h.url for h in result.platforms_found[:10] if h.url]
+            if top_urls:
+                extractions = await extract_profiles_batch(top_urls)
+                profile_extractions = [e.model_dump() for e in extractions if e.fields]
+        except Exception as e:
+            logger.warning(f"socid-extractor enrichment failed: {e}")
+
+        return PlatformResult(
+            plataforma="username_enum",
+            disponible=True,
+            resultados={
+                "username": result.username,
+                "total_found": result.total_found,
+                "total_checked": result.total_checked,
+                "platforms_found": platforms_found,
+                "profile_extractions": profile_extractions,
+                "errors_count": len(result.errors),
+            },
+        )
+    except Exception as e:
+        return PlatformResult(plataforma="username_enum", disponible=False, error=str(e))
+
+
+async def _search_github(username: str) -> PlatformResult:
+    """Deep GitHub OSINT — emails from commits/GPG, SSH keys, repos."""
+    try:
+        from modules.osint_tools.service import github_osint
+        result = await github_osint(username)
+        if result.error:
+            return PlatformResult(plataforma="github", disponible=False, error=result.error)
+        return PlatformResult(plataforma="github", disponible=True, resultados=result.model_dump())
+    except Exception as e:
+        return PlatformResult(plataforma="github", disponible=False, error=str(e))
+
+
+async def _search_twitch(username: str) -> PlatformResult:
+    """Twitch profile lookup."""
+    try:
+        from modules.osint_tools.service import twitch_lookup
+        result = await twitch_lookup(username)
+        if result.error:
+            return PlatformResult(plataforma="twitch", disponible=False, error=result.error)
+        return PlatformResult(plataforma="twitch", disponible=True, resultados=result.model_dump())
+    except Exception as e:
+        return PlatformResult(plataforma="twitch", disponible=False, error=str(e))
+
+
 async def _search_dark_web(query: str) -> PlatformResult:
     """Search dark web / .onion sites."""
     try:
@@ -185,6 +256,9 @@ async def search_person(
     include_news: bool = True,
     include_dark_web: bool = False,
     include_gaming: bool = False,
+    include_username_enum: bool = True,
+    include_github: bool = True,
+    include_twitch: bool = True,
 ) -> PersonSearchResponse:
     """
     Busca una persona en TODAS las plataformas disponibles simultaneamente.
@@ -244,6 +318,18 @@ async def search_person(
     # Gaming platforms (Steam, Xbox)
     if include_gaming and username:
         tasks["gaming"] = _search_gaming(username)
+
+    # Username enumeration (findme — 400+ platforms)
+    if include_username_enum and username:
+        tasks["username_enum"] = _search_username_enum(username)
+
+    # GitHub deep OSINT (emails from commits, GPG, SSH keys)
+    if include_github and username:
+        tasks["github"] = _search_github(username)
+
+    # Twitch profile lookup
+    if include_twitch and username:
+        tasks["twitch"] = _search_twitch(username)
 
     # Dark web
     if include_dark_web:

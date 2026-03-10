@@ -3,11 +3,110 @@ Vulcan — Unified OSINT Platform
 Consolidates: Vulcan, Hades, nyx-crawler, Hugin, Skadi
 Port 8000 | FastAPI + lifespan
 """
+import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from datetime import datetime, timezone
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from config import settings, logger
+from shared.activity_log import activity_log, ActivityEntry
+from shared.dashboard_html import DASHBOARD_HTML
+
+# ── Path → module mapping ──
+PATH_MODULE_MAP = {
+    "/vehicle": "vehicle",
+    "/marketplace": "marketplace",
+    "/groups": "groups",
+    "/news": "news",
+    "/sans": "sans",
+    "/darkweb": "dark_web",
+    "/intel": "intelligence",
+    "/scheduler": "scheduler",
+    "/social": "osint_social",
+    "/search": "osint_specialized",
+    "/google": "google_search",
+    "/person": "person_search",
+    "/gaming": "gaming",
+    "/records": "public_records",
+    "/fb-accounts": "fb_accounts",
+    "/social-accounts": "social_accounts",
+    "/sentiment": "sentiment",
+    "/geo": "geo",
+    "/monitoring": "monitoring",
+    "/username": "username_enum",
+    "/osint-tools": "osint_tools",
+    "/pdl": "pdl",
+    "/health": "health",
+    "/dashboard": "dashboard",
+    "/api/activity": "dashboard",
+    "/proxy": "proxy",
+}
+
+SKIP_LOG_PREFIXES = ("/dashboard", "/api/activity", "/favicon", "/docs", "/openapi")
+
+
+def _resolve_module(path: str) -> str:
+    for prefix, mod in PATH_MODULE_MAP.items():
+        if path.startswith(prefix):
+            return mod
+    return "root"
+
+
+class ActivityLogMiddleware(BaseHTTPMiddleware):
+    """Logs every request to the in-memory activity log + stdout."""
+
+    async def dispatch(self, request: Request, call_next):
+        start = time.perf_counter()
+        path = request.url.path
+        query = str(request.url.query) if request.url.query else ""
+        module = _resolve_module(path)
+        skip_log = any(path.startswith(p) for p in SKIP_LOG_PREFIXES)
+
+        # Log incoming request (skip dashboard polling)
+        if not skip_log:
+            logger.info(
+                f"→ {request.method} {path}"
+                + (f"?{query}" if query else "")
+                + f"  [module={module}, client={request.client.host if request.client else '?'}]"
+            )
+
+        error_msg = None
+        status_code = 500
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+        except Exception as exc:
+            error_msg = str(exc)[:500]
+            logger.error(f"✗ {request.method} {path} — unhandled error: {error_msg}")
+            raise
+        finally:
+            duration_ms = (time.perf_counter() - start) * 1000.0
+
+            if not skip_log:
+                level = "INFO" if status_code < 400 else ("WARNING" if status_code < 500 else "ERROR")
+                getattr(logger, level.lower(), logger.info)(
+                    f"← {request.method} {path} → {status_code} ({duration_ms:.0f}ms)"
+                    + (f"  ERROR: {error_msg}" if error_msg else "")
+                )
+
+            activity_log.add(ActivityEntry(
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                method=request.method,
+                path=path,
+                query=query,
+                status_code=status_code,
+                duration_ms=duration_ms,
+                client_ip=request.client.host if request.client else "",
+                module=module,
+                error=error_msg,
+            ))
+
+        return response
+
 
 # ── Module status registry ──
 module_status: dict[str, dict] = {}
@@ -72,7 +171,7 @@ async def lifespan(app: FastAPI):
         _set_status("social_accounts", False, str(e))
 
     # 7. OSINT modules — stateless, always available
-    for mod in ["marketplace", "groups", "news", "osint_social", "osint_specialized", "google_search", "person_search", "gaming", "public_records", "sentiment", "geo", "monitoring", "vehicle_osint"]:
+    for mod in ["marketplace", "groups", "news", "osint_social", "osint_specialized", "google_search", "person_search", "gaming", "public_records", "sentiment", "geo", "monitoring", "vehicle_osint", "username_enum", "osint_tools", "pdl"]:
         _set_status(mod, True)
 
     logger.info(f"Vulcan ready — {sum(1 for s in module_status.values() if s['available'])}/{len(module_status)} modules OK")
@@ -103,6 +202,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(ActivityLogMiddleware)
+
+
+# ── Dashboard & Activity API ──
+@app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+async def dashboard():
+    return DASHBOARD_HTML
+
+
+@app.get("/api/activity/recent")
+async def activity_recent(limit: int = 50):
+    return activity_log.recent(limit)
+
+
+@app.get("/api/activity/stats")
+async def activity_stats():
+    return activity_log.stats()
+
+
+@app.get("/api/activity/search")
+async def activity_search(q: str = "", limit: int = 50):
+    return activity_log.search(q, limit)
+
+
 # ── Register routers ──
 from modules.marketplace.router import router as marketplace_router
 from modules.groups.router import router as groups_router
@@ -130,6 +253,9 @@ from modules.sentiment.router import router as sentiment_router
 from modules.geo.router import router as geo_router
 from modules.monitoring.router import router as monitoring_router
 from modules.vehicle_osint.router import router as vehicle_osint_router
+from modules.username_enum.router import router as username_enum_router
+from modules.osint_tools.router import router as osint_tools_router
+from modules.pdl.router import router as pdl_router
 
 app.include_router(marketplace_router)
 app.include_router(groups_router)
@@ -153,6 +279,9 @@ app.include_router(sentiment_router)
 app.include_router(geo_router)
 app.include_router(monitoring_router)
 app.include_router(vehicle_osint_router)
+app.include_router(username_enum_router)
+app.include_router(osint_tools_router)
+app.include_router(pdl_router)
 
 
 @app.get("/")
