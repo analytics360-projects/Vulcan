@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgbm1 libvulkan1 fonts-liberation \
     xvfb procps \
     build-essential g++ \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Tor config
@@ -23,10 +24,11 @@ RUN printf "SocksPort 127.0.0.1:9050\nControlPort 127.0.0.1:9051\nDataDirectory 
 # Install numpy<2.0 first — server CPU lacks X86_V2 instructions required by numpy 2.x
 # Then install everything else, using --no-build-isolation for packages that
 # build from source (insightface) so they use our pinned numpy, not their own
-COPY requirements.txt .
+COPY requirements.txt requirements-intelligence.txt ./
 RUN pip install --no-cache-dir "numpy<2.0" Cython \
     && pip install --no-cache-dir --no-build-isolation insightface>=0.7.3 \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir -r requirements-intelligence.txt
 
 # Application
 COPY . .

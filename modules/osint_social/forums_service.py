@@ -7,14 +7,37 @@ from modules.osint_social.models import OsintResult, PlatformHealth
 
 def get_health() -> PlatformHealth:
     if not settings.reddit_client_id or not settings.reddit_client_secret:
-        return PlatformHealth(available=False, reason="REDDIT_CLIENT_ID/SECRET not configured")
+        return PlatformHealth(available=True, reason="Google fallback mode (REDDIT_CLIENT_ID/SECRET not configured)")
     return PlatformHealth(available=True)
+
+
+async def _google_forums_fallback(query: str, max_results: int) -> list[OsintResult]:
+    """Fallback: search forums via Google dorks when Reddit API keys are not configured."""
+    results = []
+    try:
+        from modules.google_search.service import search as google_search
+        dork = f'site:reddit.com OR site:quora.com OR site:foros.com "{query}"'
+        google_results = await google_search(dork, max_results=max_results)
+        for item in google_results:
+            results.append(OsintResult(
+                plataforma="forums_google",
+                tipo="post",
+                datos={
+                    "title": item.get("title", ""),
+                    "snippet": item.get("snippet", item.get("description", "")),
+                    "source": item.get("source", item.get("domain", "")),
+                },
+                fuente_url=item.get("url", item.get("link", "")),
+            ))
+    except Exception as e:
+        logger.warning(f"Forums Google fallback error: {e}")
+    return results
 
 
 @rate_limited("forums")
 async def search(query: str = None, subreddit: str = None, max_results: int = 10) -> list[OsintResult]:
     if not settings.reddit_client_id:
-        return []
+        return await _google_forums_fallback(query, max_results) if query else []
     results = []
     try:
         import asyncpraw

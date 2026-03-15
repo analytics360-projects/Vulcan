@@ -1,6 +1,6 @@
-"""Vehicle OSINT router — VIN decode, REPUVE lookup, social OSINT, full search"""
+"""Vehicle OSINT router — VIN decode, REPUVE lookup, social OSINT, full search, image analysis"""
 import json
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, File, Query, Request, UploadFile
 from typing import Optional
 
 from config import logger
@@ -9,12 +9,17 @@ from modules.vehicle_osint.models import (
     RepuveResult,
     VehicleOsintResult,
     VehicleFullSearchResponse,
+    VehicleImageAnalysisResult,
+    VehicleTrainRequest,
+    VehicleTrainResponse,
 )
 from modules.vehicle_osint.service import (
     decode_vin,
     search_repuve,
     search_vehicle_osint,
     full_vehicle_search,
+    analyze_vehicle_image,
+    train_vehicle_model,
 )
 
 router = APIRouter(prefix="/vehicle", tags=["Vehicle OSINT"])
@@ -69,4 +74,21 @@ async def full_search_endpoint(
     result = await full_vehicle_search(placa=placa, niv=niv)
     _log_response_json("VEHICLE-FULL-SEARCH", result)
     logger.info(f"[VEHICLE-ROUTER] Full search response sent to {client}")
+    return result
+
+
+@router.post("/analyze-image", response_model=VehicleImageAnalysisResult)
+async def analyze_image_endpoint(file: UploadFile = File(...)):
+    """Analyze a vehicle image: color extraction, plate OCR, type/make stubs."""
+    logger.info(f"[VEHICLE-ROUTER] analyze-image: {file.filename}, size={file.size}")
+    image_bytes = await file.read()
+    result = await analyze_vehicle_image(image_bytes)
+    _log_response_json("VEHICLE-ANALYZE-IMAGE", result)
+    return result
+
+
+@router.post("/train", response_model=VehicleTrainResponse)
+async def train_endpoint(request: VehicleTrainRequest):
+    """Stub endpoint for fine-tuning with labeled vehicle images."""
+    result = await train_vehicle_model(label=request.label, image_count=request.image_count)
     return result

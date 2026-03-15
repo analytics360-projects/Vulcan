@@ -5,10 +5,12 @@ from selenium.webdriver.common.action_chains import ActionChains
 from collections import Counter
 import re
 import time
+import requests
+from urllib.parse import quote_plus
 from fastapi import HTTPException
 
 from config import settings, logger
-from modules.groups.models import Post, Comment, Reaction, ReactionType, GroupAnalysis
+from modules.groups.models import Post, Comment, Reaction, ReactionType, GroupAnalysis, GroupCategoryResult, GroupCategorySearchResponse
 from shared.webdriver import get_driver, handle_facebook_dialogs, wait_for_element
 
 DEFAULT_MAX_POSTS = settings.max_posts
@@ -1114,6 +1116,18 @@ def extract_post_data(post_element, driver) -> Optional[Post]:
                 logger.warning(f"Error extracting comment count: {str(e)}")
 
         # Create post object
+        # G2 — Classify sentiment using keyword-based heuristics
+        _sentimiento = None
+        _sentimiento_score = None
+        if content and len(content.strip()) > 2:
+            try:
+                from modules.sentiment.service import classify_keyword
+                _item = classify_keyword(content)
+                _sentimiento = _item.sentimiento
+                _sentimiento_score = _item.score
+            except Exception:
+                pass
+
         post = Post(
             post_id=post_id,
             author=author,
@@ -1125,7 +1139,9 @@ def extract_post_data(post_element, driver) -> Optional[Post]:
             image_url=image_url,
             likes_count=likes_count,
             comments_count=comments_count,
-            authorized=False
+            authorized=False,
+            sentimiento=_sentimiento,
+            sentimiento_score=_sentimiento_score,
         )
 
         return post
@@ -2120,3 +2136,114 @@ def analyze_group_engagement(
     except Exception as e:
         logger.error(f"Error analyzing group engagement: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error analyzing group engagement: {str(e)}")
+
+
+# ── G4: Group Taxonomy Search by Category ──
+
+# Maps category codes to Google dork fragments for Facebook group/page search
+CATEGORY_DORKS: Dict[str, Dict[str, str]] = {
+    "negocios": {
+        "label": "Negocios / Lugares locales",
+        "dork": 'site:facebook.com/groups OR site:facebook.com/pages "{query}" ("negocio" OR "local" OR "tienda" OR "restaurante" OR "servicio")',
+    },
+    "empresas": {
+        "label": "Empresas / Organizaciones",
+        "dork": 'site:facebook.com/groups OR site:facebook.com/pages "{query}" ("empresa" OR "organización" OR "institución" OR "corporativo")',
+    },
+    "marcas": {
+        "label": "Marcas / Productos",
+        "dork": 'site:facebook.com/groups OR site:facebook.com/pages "{query}" ("marca" OR "producto" OR "oficial" OR "tienda oficial")',
+    },
+    "artistas": {
+        "label": "Artistas / Figuras públicas",
+        "dork": 'site:facebook.com/groups OR site:facebook.com/pages "{query}" ("artista" OR "banda" OR "músico" OR "figura pública" OR "cantante")',
+    },
+    "entretenimiento": {
+        "label": "Entretenimiento",
+        "dork": 'site:facebook.com/groups OR site:facebook.com/pages "{query}" ("entretenimiento" OR "diversión" OR "juegos" OR "eventos" OR "cine")',
+    },
+    "causas": {
+        "label": "Causas / Comunidades",
+        "dork": 'site:facebook.com/groups OR site:facebook.com/pages "{query}" ("causa" OR "comunidad" OR "voluntariado" OR "apoyo" OR "fundación")',
+    },
+}
+
+
+def _google_search(dork_query: str, max_results: int = 5) -> List[Dict[str, Any]]:
+    """
+    Execute a Google search using the given dork query and return parsed results.
+    Uses Google's standard search with scraping as a lightweight approach.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "es-MX,es;q=0.9",
+    }
+    url = f"https://www.google.com/search?q={quote_plus(dork_query)}&num={max_results}&hl=es"
+
+    results: List[Dict[str, Any]] = []
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for g in soup.select("div.g, div[data-sokoban-container]"):
+            link_el = g.select_one("a[href]")
+            title_el = g.select_one("h3")
+            snippet_el = g.select_one("div.VwiC3b, span.aCOpRe, div[data-sncf]")
+
+            if not link_el:
+                continue
+            href = link_el.get("href", "")
+            if not href.startswith("http"):
+                continue
+
+            results.append({
+                "title": title_el.get_text(strip=True) if title_el else "",
+                "url": href,
+                "snippet": snippet_el.get_text(strip=True) if snippet_el else "",
+            })
+
+            if len(results) >= max_results:
+                break
+    except Exception as e:
+        logger.warning(f"Google dork search failed for query '{dork_query[:80]}...': {e}")
+
+    return results
+
+
+def search_groups_by_category(
+    query: str,
+    categories: List[str],
+    max_results: int = 5,
+) -> GroupCategorySearchResponse:
+    """
+    Search Facebook groups/pages segmented by taxonomy categories using Google dorks.
+    """
+    all_results: List[GroupCategoryResult] = []
+    total = 0
+
+    for cat_code in categories:
+        cat_info = CATEGORY_DORKS.get(cat_code)
+        if not cat_info:
+            logger.warning(f"Unknown group category code: {cat_code}")
+            continue
+
+        dork = cat_info["dork"].replace("{query}", query)
+        items = _google_search(dork, max_results)
+        total += len(items)
+
+        all_results.append(GroupCategoryResult(
+            category=cat_code,
+            category_label=cat_info["label"],
+            dork_query=dork,
+            results=items,
+        ))
+
+    return GroupCategorySearchResponse(
+        query=query,
+        categories=categories,
+        results=all_results,
+        total_results=total,
+    )

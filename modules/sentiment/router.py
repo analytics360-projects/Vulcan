@@ -1,10 +1,15 @@
-"""Sentiment analysis + Semantic report router"""
+"""Sentiment analysis + Semantic report router — G2: Typed Interaction Analysis"""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 
 from config import logger
-from modules.sentiment.service import analyze_sentiment_batch, generate_semantic_report
+from modules.sentiment.models import SentimentRequest as KeywordSentimentRequest, SentimentResponse
+from modules.sentiment.service import (
+    analyze_sentiment_batch,
+    analyze_texts_keyword,
+    generate_semantic_report,
+)
 
 router = APIRouter(prefix="/sentiment", tags=["sentiment"])
 
@@ -21,12 +26,26 @@ class SemanticReportRequest(BaseModel):
 
 @router.post("/analyze")
 async def analyze_sentiment(request: SentimentRequest):
-    """Analyze sentiment for a batch of texts."""
+    """Analyze sentiment for a batch of texts using LLM."""
     try:
         results = analyze_sentiment_batch(request.texts)
         return {"results": results, "count": len(results)}
     except Exception as e:
         logger.exception(f"Sentiment analysis error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/analyze-keyword", response_model=SentimentResponse)
+async def analyze_sentiment_keyword(request: KeywordSentimentRequest):
+    """
+    G2: Keyword-based sentiment analysis — no external LLM needed.
+    Classifies texts as positivo/negativo/ofensivo/neutral using Spanish keyword dictionaries.
+    Fast, deterministic, offline-capable.
+    """
+    try:
+        return analyze_texts_keyword(request.texts)
+    except Exception as e:
+        logger.exception(f"Keyword sentiment analysis error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # ── Intelligence (Hugin) ──
     ollama_api_url: str = "http://10.19.5.244:11434"
     ollama_model: str = "gemma3:27b"
+    ollama_model_small: str = "gemma3:4b"      # H2 NER — fast extraction
+    ollama_model_medium: str = "gemma3:12b"     # H3 Consistency — reasoning
+    whisper_model_stt: str = "large-v3"         # H4 STT Forense — high accuracy
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = ""

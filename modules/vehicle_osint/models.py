@@ -59,3 +59,29 @@ class VehicleFullSearchResponse(BaseModel):
     placa: Optional[str] = None
     niv: Optional[str] = None
     timestamp: str = ""
+
+
+class VehicleImageAttribute(BaseModel):
+    value: str
+    confidence: float = 0.0
+
+
+class VehicleImageAnalysisResult(BaseModel):
+    tipo_vehiculo: VehicleImageAttribute = VehicleImageAttribute(value="desconocido")
+    color: VehicleImageAttribute = VehicleImageAttribute(value="desconocido")
+    marca_probable: VehicleImageAttribute = VehicleImageAttribute(value="desconocido")
+    placa_ocr: VehicleImageAttribute = VehicleImageAttribute(value="no_detectada")
+    anomalias_visibles: list[str] = []
+    confidence: float = 0.0
+    error: Optional[str] = None
+
+
+class VehicleTrainRequest(BaseModel):
+    label: str
+    image_count: int = 0
+
+
+class VehicleTrainResponse(BaseModel):
+    status: str = "stub"
+    message: str = "Endpoint de entrenamiento pendiente de implementar con modelo ML"
+    label: Optional[str] = None

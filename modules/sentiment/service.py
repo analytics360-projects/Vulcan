@@ -1,13 +1,159 @@
-"""Sentiment analysis service using LLM (Ollama/DeepSeek)"""
+"""Sentiment analysis service — keyword-based + LLM fallback (G2: Typed Interaction Analysis)"""
 from typing import List, Dict, Any
+import re
 import requests
 import json
 
 from config import settings, logger
+from modules.sentiment.models import SentimentItem, SentimentResponse
 
 LLM_API_URL = settings.llm_api_url
 LLM_MODEL = settings.llm_model
 LLM_TIMEOUT = settings.llm_timeout
+
+# ── Keyword-based sentiment dictionaries (Spanish) ──
+
+_OFFENSIVE_WORDS = {
+    # Insultos
+    "pendejo", "pendeja", "idiota", "estupido", "estupida", "imbecil", "tarado", "tarada",
+    "baboso", "babosa", "menso", "mensa", "tonto", "tonta", "burro", "burra", "animal",
+    "cerdo", "cerda", "puerco", "puerca", "zorra", "perra", "puta", "puto", "cabron",
+    "cabrona", "maldito", "maldita", "desgraciado", "desgraciada", "hijo de puta",
+    "hdp", "ptm", "chinga", "chingada", "chingado", "verga", "culero", "culera",
+    "mamada", "joto", "maricon", "pinche", "naco", "naca", "corriente", "mugroso",
+    # Amenazas / odio
+    "matar", "matarte", "muerte", "muere", "morir", "amenaza", "golpear", "golpearte",
+    "romper la cara", "acabar contigo", "te voy a", "vas a pagar", "venganza",
+    "odio", "desprecio", "asco", "basura", "escoria", "lacra", "rata", "alimaña",
+}
+
+_NEGATIVE_WORDS = {
+    "malo", "mala", "terrible", "horrible", "pesimo", "pesima", "feo", "fea",
+    "peligro", "peligroso", "peligrosa", "miedo", "temor", "triste", "tristeza",
+    "dolor", "sufrir", "sufrimiento", "dañar", "daño", "destruir", "destruccion",
+    "fracaso", "fracasar", "perder", "perdida", "lamentar", "arrepentir",
+    "preocupar", "preocupante", "problema", "problemas", "crisis", "grave",
+    "peor", "decepcion", "decepcionar", "frustrar", "frustrante", "enojo",
+    "coraje", "rabia", "furioso", "furiosa", "molesto", "molesta", "indignante",
+    "injusto", "injusta", "abuso", "abusar", "violencia", "violento", "violenta",
+    "robo", "robar", "crimen", "criminal", "delito", "delincuente", "inseguro",
+    "insegura", "inseguridad", "corrupto", "corrupcion", "fraude", "estafa",
+}
+
+_POSITIVE_WORDS = {
+    "bueno", "buena", "excelente", "genial", "feliz", "felicidad", "alegria",
+    "maravilloso", "maravillosa", "increible", "fantastico", "fantastica",
+    "hermoso", "hermosa", "bonito", "bonita", "lindo", "linda", "bello", "bella",
+    "amor", "amar", "cariño", "querer", "adorar", "gracias", "agradecido",
+    "agradecida", "bendicion", "bendecido", "esperanza", "optimismo", "exito",
+    "exitoso", "exitosa", "logro", "lograr", "ganar", "victoria", "triunfo",
+    "mejor", "perfecto", "perfecta", "magnifico", "magnifica", "brillante",
+    "talento", "talentoso", "talentosa", "orgullo", "orgulloso", "orgullosa",
+    "valiente", "fuerte", "grandioso", "grandiosa", "impresionante", "super",
+    "bien", "bravo", "brava", "admirable", "positivo", "positiva",
+}
+
+_CATEGORY_MAP = {
+    "insulto": {"pendejo", "pendeja", "idiota", "estupido", "estupida", "imbecil", "tarado",
+                "baboso", "menso", "tonto", "burro", "cerdo", "puerco", "zorra", "perra",
+                "puta", "puto", "cabron", "culero", "pinche", "naco", "corriente"},
+    "amenaza": {"matar", "matarte", "muerte", "morir", "golpear", "golpearte", "romper la cara",
+                "acabar contigo", "te voy a", "vas a pagar", "venganza", "amenaza"},
+    "odio": {"odio", "desprecio", "asco", "basura", "escoria", "lacra", "rata", "alimaña"},
+    "aprobacion": {"bueno", "excelente", "genial", "maravilloso", "increible", "fantastico",
+                   "perfecto", "brillante", "bravo", "super", "admirable"},
+    "violencia": {"violencia", "violento", "violenta", "golpear", "matar", "destruir",
+                  "robo", "robar", "crimen", "criminal", "delito", "delincuente"},
+}
+
+
+def _normalize(text: str) -> str:
+    """Lowercase + strip accents for matching."""
+    replacements = {
+        'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u',
+        'ñ': 'n', 'ü': 'u',
+    }
+    t = text.lower()
+    for src, dst in replacements.items():
+        t = t.replace(src, dst)
+    return t
+
+
+def classify_keyword(text: str) -> SentimentItem:
+    """
+    Classify a single text using keyword-based heuristics.
+    No external LLM needed — fast and deterministic.
+    """
+    norm = _normalize(text)
+    words = set(re.findall(r'\b\w+\b', norm))
+    total_words = max(len(words), 1)
+
+    off_hits = words & _OFFENSIVE_WORDS
+    neg_hits = words & _NEGATIVE_WORDS
+    pos_hits = words & _POSITIVE_WORDS
+
+    # Also check multi-word phrases
+    for phrase in ["hijo de puta", "romper la cara", "acabar contigo", "te voy a", "vas a pagar"]:
+        if phrase in norm:
+            off_hits.add(phrase)
+
+    # Determine categories
+    categorias = []
+    for cat, cat_words in _CATEGORY_MAP.items():
+        if words & cat_words:
+            categorias.append(cat)
+
+    # Classify
+    off_count = len(off_hits)
+    neg_count = len(neg_hits)
+    pos_count = len(pos_hits)
+
+    if off_count > 0:
+        sentimiento = "ofensivo"
+        score = min(1.0, off_count / total_words * 3)
+    elif neg_count > pos_count:
+        sentimiento = "negativo"
+        score = min(1.0, neg_count / total_words * 2)
+    elif pos_count > neg_count:
+        sentimiento = "positivo"
+        score = min(1.0, pos_count / total_words * 2)
+    else:
+        sentimiento = "neutral"
+        score = 0.0
+
+    return SentimentItem(
+        text=text,
+        sentimiento=sentimiento,
+        score=round(score, 3),
+        categorias=categorias,
+    )
+
+
+def analyze_texts_keyword(texts: List[str]) -> SentimentResponse:
+    """
+    Keyword-based batch analysis — no external dependencies.
+    Returns structured SentimentResponse with counts.
+    """
+    resultados = []
+    for text in texts:
+        if not text or len(text.strip()) < 3:
+            resultados.append(SentimentItem(text=text, sentimiento="neutral", score=0.0, categorias=[]))
+        else:
+            resultados.append(classify_keyword(text))
+
+    off = sum(1 for r in resultados if r.sentimiento == "ofensivo")
+    pos = sum(1 for r in resultados if r.sentimiento == "positivo")
+    neg = sum(1 for r in resultados if r.sentimiento == "negativo")
+    neu = sum(1 for r in resultados if r.sentimiento == "neutral")
+
+    return SentimentResponse(
+        resultados=resultados,
+        total=len(resultados),
+        ofensivos=off,
+        positivos=pos,
+        negativos=neg,
+        neutrales=neu,
+    )
 
 
 def analyze_sentiment_batch(texts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

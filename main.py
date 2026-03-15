@@ -44,6 +44,28 @@ PATH_MODULE_MAP = {
     "/dashboard": "dashboard",
     "/api/activity": "dashboard",
     "/proxy": "proxy",
+    "/geospatial": "geospatial",
+    "/speech": "speech",
+    "/analysis": "analysis",
+    "/ocr": "ocr",
+    "/social-graph": "social_graph",
+    "/analytics": "analytics",
+    "/training": "training",
+    "/labels": "labels",
+    "/nlp-911": "nlp_911",
+    "/predictive": "predictive",
+    "/semantic-search": "semantic_search",
+    "/case-scoring": "case_scoring",
+    "/deduplication": "deduplication",
+    "/cdr-analytics": "cdr_analytics",
+    "/investigator-ai": "investigator_ai",
+    "/ner": "ner",
+    "/consistency": "consistency",
+    "/community": "community",
+    "/correlation": "correlation",
+    "/profiler": "profiler",
+    "/hypothesis": "hypothesis",
+    "/tracking": "tracking_analytics",
 }
 
 SKIP_LOG_PREFIXES = ("/dashboard", "/api/activity", "/favicon", "/docs", "/openapi")
@@ -149,6 +171,15 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Scheduler init failed: {e}")
             _set_status("scheduler", False, str(e))
 
+    # 3b. LLM Queue table
+    try:
+        from services.llm_queue_service import ensure_queue_table
+        ensure_queue_table()
+        _set_status("llm_queue", True)
+    except Exception as e:
+        logger.warning(f"LLM queue table init failed (non-critical): {e}")
+        _set_status("llm_queue", False, str(e))
+
     # 4. Proxy Manager
     try:
         from shared.proxy_manager import proxy_manager
@@ -171,7 +202,7 @@ async def lifespan(app: FastAPI):
         _set_status("social_accounts", False, str(e))
 
     # 7. OSINT modules — stateless, always available
-    for mod in ["marketplace", "groups", "news", "osint_social", "osint_specialized", "google_search", "person_search", "gaming", "public_records", "sentiment", "geo", "monitoring", "vehicle_osint", "username_enum", "osint_tools", "pdl"]:
+    for mod in ["marketplace", "groups", "news", "osint_social", "osint_specialized", "google_search", "person_search", "gaming", "public_records", "sentiment", "geo", "monitoring", "vehicle_osint", "username_enum", "osint_tools", "pdl", "geospatial", "speech", "analysis", "social_graph", "data_quality", "analytics", "training", "ocr", "labels", "nlp_911", "predictive", "semantic_search", "case_scoring", "deduplication", "cdr_analytics", "investigator_ai", "ner", "consistency", "community", "correlation", "profiler", "hypothesis", "tracking_analytics"]:
         _set_status(mod, True)
 
     logger.info(f"Vulcan ready — {sum(1 for s in module_status.values() if s['available'])}/{len(module_status)} modules OK")
@@ -236,10 +267,23 @@ try:
     from modules.intelligence.router_search import router as intel_search_router
     from modules.intelligence.router_objects import router as intel_objects_router
     from modules.intelligence.router_list import router as intel_list_router
+    from modules.intelligence.router_risk import router as intel_risk_router
     _intel_available = True
 except ImportError as e:
     logger.warning(f"Intelligence module not available (missing deps): {e}")
     _intel_available = False
+try:
+    from modules.intelligence.router_metrics import router as intel_metrics_router
+    _intel_metrics_available = True
+except ImportError as e:
+    logger.warning(f"Intelligence metrics module not available: {e}")
+    _intel_metrics_available = False
+try:
+    from modules.intelligence.router_modus import router as intel_modus_router
+    _intel_modus_available = True
+except ImportError as e:
+    logger.warning(f"Intelligence modus operandi module not available: {e}")
+    _intel_modus_available = False
 from modules.scheduler.router import router as scheduler_router
 from modules.osint_social.router import router as social_router
 from modules.osint_specialized.router import router as search_router
@@ -256,6 +300,29 @@ from modules.vehicle_osint.router import router as vehicle_osint_router
 from modules.username_enum.router import router as username_enum_router
 from modules.osint_tools.router import router as osint_tools_router
 from modules.pdl.router import router as pdl_router
+from modules.geospatial.router import router as geospatial_router
+from modules.speech.router import router as speech_router
+from modules.analysis.router import router as analysis_router
+from modules.social_graph.router import router as social_graph_router
+from modules.data_quality.router import router as data_quality_router
+from modules.analytics.router import router as analytics_router
+from modules.training.router import router as training_router
+from modules.ocr.router import router as ocr_router
+from modules.labels.router import router as labels_router
+from modules.nlp_911.router import router as nlp_911_router
+from modules.predictive.router import router as predictive_router
+from modules.semantic_search.router import router as semantic_search_router
+from modules.case_scoring.router import router as case_scoring_router
+from modules.deduplication.router import router as deduplication_router
+from modules.cdr_analytics.router import router as cdr_analytics_router
+from modules.investigator_ai.router import router as investigator_ai_router
+from modules.ner.router import router as ner_router
+from modules.consistency.router import router as consistency_router
+from modules.community.router import router as community_router
+from modules.correlation.router import router as correlation_router
+from modules.profiler.router import router as profiler_router
+from modules.hypothesis.router import router as hypothesis_router
+from modules.tracking_analytics.router import router as tracking_analytics_router
 
 app.include_router(marketplace_router)
 app.include_router(groups_router)
@@ -266,6 +333,11 @@ if _intel_available:
     app.include_router(intel_search_router)
     app.include_router(intel_objects_router)
     app.include_router(intel_list_router)
+    app.include_router(intel_risk_router)
+if _intel_metrics_available:
+    app.include_router(intel_metrics_router)
+if _intel_modus_available:
+    app.include_router(intel_modus_router)
 app.include_router(scheduler_router)
 app.include_router(social_router)
 app.include_router(search_router)
@@ -282,6 +354,29 @@ app.include_router(vehicle_osint_router)
 app.include_router(username_enum_router)
 app.include_router(osint_tools_router)
 app.include_router(pdl_router)
+app.include_router(geospatial_router)
+app.include_router(speech_router)
+app.include_router(analysis_router)
+app.include_router(social_graph_router)
+app.include_router(data_quality_router)
+app.include_router(analytics_router)
+app.include_router(training_router)
+app.include_router(ocr_router)
+app.include_router(labels_router)
+app.include_router(nlp_911_router)
+app.include_router(predictive_router)
+app.include_router(semantic_search_router)
+app.include_router(case_scoring_router)
+app.include_router(deduplication_router)
+app.include_router(cdr_analytics_router)
+app.include_router(investigator_ai_router)
+app.include_router(ner_router)
+app.include_router(consistency_router)
+app.include_router(community_router)
+app.include_router(correlation_router)
+app.include_router(profiler_router)
+app.include_router(hypothesis_router)
+app.include_router(tracking_analytics_router)
 
 
 @app.get("/")

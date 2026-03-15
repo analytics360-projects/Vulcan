@@ -3,10 +3,29 @@ from fastapi import APIRouter, Query, Path, HTTPException
 from typing import List
 
 from config import settings, logger
-from modules.groups.models import GroupAnalysis, Post
-from modules.groups.service import scrape_facebook_group, get_group_posts_by_keyword, get_group_member_activity
+from modules.groups.models import GroupAnalysis, Post, GroupCategorySearchResponse
+from modules.groups.service import scrape_facebook_group, get_group_posts_by_keyword, get_group_member_activity, search_groups_by_category
 
 router = APIRouter(prefix="/groups", tags=["groups"])
+
+
+# ── G4: Group Taxonomy Search by Category ──
+# IMPORTANT: This route MUST be defined before /{group_id} to avoid path conflicts.
+
+@router.get("/search-by-category", response_model=GroupCategorySearchResponse)
+async def search_by_category(
+    query: str = Query(..., description="Search query"),
+    categories: str = Query(..., description="Comma-separated category codes: negocios,empresas,marcas,artistas,entretenimiento,causas"),
+    max_results: int = Query(5, ge=1, le=20),
+):
+    try:
+        category_list = [c.strip() for c in categories.split(",") if c.strip()]
+        return search_groups_by_category(query=query, categories=category_list, max_results=max_results)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error in group category search: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{group_id}", response_model=GroupAnalysis)

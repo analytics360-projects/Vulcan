@@ -1,6 +1,8 @@
-"""Vehicle OSINT service — VIN decode, REPUVE, social OSINT"""
+"""Vehicle OSINT service — VIN decode, REPUVE, social OSINT, image analysis"""
 import asyncio
+import io
 import time
+from collections import Counter
 from datetime import datetime, timezone
 
 import httpx
@@ -11,6 +13,9 @@ from modules.vehicle_osint.models import (
     RepuveResult,
     VehicleOsintResult,
     VehicleFullSearchResponse,
+    VehicleImageAnalysisResult,
+    VehicleImageAttribute,
+    VehicleTrainResponse,
 )
 
 NHTSA_URL = "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/{vin}?format=json"
@@ -301,4 +306,137 @@ async def full_vehicle_search(
         placa=placa,
         niv=niv,
         timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+# ══════════════════════════════════════════════════════════════
+# M4: Vehicle Image Analysis
+# ══════════════════════════════════════════════════════════════
+
+# Color name mapping (RGB ranges to Spanish color names)
+_COLOR_MAP = [
+    ((0, 0, 0), (60, 60, 60), "negro"),
+    ((200, 200, 200), (255, 255, 255), "blanco"),
+    ((100, 100, 100), (200, 200, 200), "gris"),
+    ((150, 0, 0), (255, 80, 80), "rojo"),
+    ((0, 0, 150), (80, 80, 255), "azul"),
+    ((0, 100, 0), (80, 255, 80), "verde"),
+    ((200, 200, 0), (255, 255, 80), "amarillo"),
+    ((180, 100, 0), (255, 180, 80), "naranja"),
+    ((100, 50, 0), (180, 120, 60), "cafe"),
+    ((150, 0, 150), (255, 80, 255), "morado"),
+]
+
+
+def _dominant_color_name(image_bytes: bytes) -> tuple[str, float]:
+    """Extract dominant color from image using Pillow and map to a color name."""
+    try:
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        # Resize for speed
+        img = img.resize((50, 50))
+        pixels = list(img.getdata())
+
+        # Average color
+        r_avg = sum(p[0] for p in pixels) / len(pixels)
+        g_avg = sum(p[1] for p in pixels) / len(pixels)
+        b_avg = sum(p[2] for p in pixels) / len(pixels)
+
+        # Find closest color name
+        best_name = "desconocido"
+        best_dist = float("inf")
+        for (r_lo, g_lo, b_lo), (r_hi, g_hi, b_hi), name in _COLOR_MAP:
+            r_mid = (r_lo + r_hi) / 2
+            g_mid = (g_lo + g_hi) / 2
+            b_mid = (b_lo + b_hi) / 2
+            dist = ((r_avg - r_mid) ** 2 + (g_avg - g_mid) ** 2 + (b_avg - b_mid) ** 2) ** 0.5
+            if dist < best_dist:
+                best_dist = dist
+                best_name = name
+
+        # Confidence inversely proportional to distance (max ~442 for RGB)
+        confidence = max(0.0, min(1.0, 1.0 - (best_dist / 250.0)))
+        return best_name, round(confidence * 100, 1)
+    except Exception as e:
+        logger.warning(f"[VEHICLE] Color extraction failed: {e}")
+        return "desconocido", 0.0
+
+
+def _ocr_plate(image_bytes: bytes) -> tuple[str, float]:
+    """Attempt OCR on image to extract plate text using pytesseract."""
+    try:
+        import pytesseract
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        # Try OCR with plate-optimized config
+        text = pytesseract.image_to_string(
+            img,
+            config="--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-",
+        ).strip()
+
+        if text and len(text) >= 4:
+            return text, 65.0
+        return "no_detectada", 0.0
+    except ImportError:
+        logger.info("[VEHICLE] pytesseract not installed — OCR skipped")
+        return "no_detectada", 0.0
+    except Exception as e:
+        logger.warning(f"[VEHICLE] OCR failed: {e}")
+        return "no_detectada", 0.0
+
+
+async def analyze_vehicle_image(image_bytes: bytes) -> VehicleImageAnalysisResult:
+    """Analyze a vehicle image: extract color, attempt OCR, stub for type/make."""
+    logger.info(f"[VEHICLE] analyze_vehicle_image: {len(image_bytes)} bytes")
+    t0 = time.perf_counter()
+
+    try:
+        # Color analysis
+        color_name, color_conf = _dominant_color_name(image_bytes)
+
+        # OCR for plate
+        plate_text, plate_conf = _ocr_plate(image_bytes)
+
+        # Type and make are stubs (would need ML model)
+        result = VehicleImageAnalysisResult(
+            tipo_vehiculo=VehicleImageAttribute(
+                value="sedan",  # stub
+                confidence=15.0,  # low confidence = stub
+            ),
+            color=VehicleImageAttribute(
+                value=color_name,
+                confidence=color_conf,
+            ),
+            marca_probable=VehicleImageAttribute(
+                value="desconocido",  # stub — needs trained model
+                confidence=0.0,
+            ),
+            placa_ocr=VehicleImageAttribute(
+                value=plate_text,
+                confidence=plate_conf,
+            ),
+            anomalias_visibles=[],  # stub
+            confidence=round((color_conf + plate_conf) / 2, 1),
+        )
+
+        elapsed = (time.perf_counter() - t0) * 1000
+        logger.info(
+            f"[VEHICLE] analyze_vehicle_image done: color={color_name}({color_conf}%), "
+            f"plate={plate_text}({plate_conf}%) ({elapsed:.0f}ms)"
+        )
+        return result
+    except Exception as e:
+        logger.error(f"[VEHICLE] analyze_vehicle_image error: {e}")
+        return VehicleImageAnalysisResult(error=str(e))
+
+
+async def train_vehicle_model(label: str, image_count: int) -> VehicleTrainResponse:
+    """Stub endpoint for vehicle model training."""
+    logger.info(f"[VEHICLE] train_vehicle_model stub: label={label}, count={image_count}")
+    return VehicleTrainResponse(
+        status="stub",
+        message=f"Entrenamiento para '{label}' con {image_count} imágenes pendiente de implementar",
+        label=label,
     )

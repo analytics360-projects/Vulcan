@@ -396,8 +396,11 @@ async def search_repuve(placa: str = None, niv: str = None) -> PublicRecordResul
             )
 
     try:
-        # Run blocking Selenium code in thread pool to not block event loop
-        return await asyncio.to_thread(_run_repuve)
+        # Run blocking Selenium code in thread pool with 60s timeout
+        return await asyncio.wait_for(asyncio.to_thread(_run_repuve), timeout=60)
+    except asyncio.TimeoutError:
+        logger.warning("[REPUVE] Búsqueda cancelada por timeout (60s)")
+        return PublicRecordResult(fuente="REPUVE", tipo="vehiculo", disponible=False, error="Timeout: REPUVE no respondió en 60 segundos")
     except Exception as e:
         return PublicRecordResult(fuente="REPUVE", tipo="vehiculo", disponible=False, error=str(e))
 

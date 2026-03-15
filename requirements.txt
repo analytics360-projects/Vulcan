@@ -53,6 +53,13 @@ ultralytics>=8.0.0
 insightface>=0.7.3
 onnxruntime>=1.16.0
 
+# ── Speech / STT Forense (H4) ──
+openai-whisper>=20231117
+librosa>=0.10.0
+pydub>=0.25.1
+ffmpeg-python>=0.2.0
+gTTS>=2.3.0
+
 # ── Logging ──
 structlog>=23.2.0
 
