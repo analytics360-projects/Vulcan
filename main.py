@@ -66,6 +66,8 @@ PATH_MODULE_MAP = {
     "/profiler": "profiler",
     "/hypothesis": "hypothesis",
     "/tracking": "tracking_analytics",
+    "/cameras": "camera_manager",
+    "/video-analytics": "video_analytics",
 }
 
 SKIP_LOG_PREFIXES = ("/dashboard", "/api/activity", "/favicon", "/docs", "/openapi")
@@ -323,6 +325,8 @@ from modules.correlation.router import router as correlation_router
 from modules.profiler.router import router as profiler_router
 from modules.hypothesis.router import router as hypothesis_router
 from modules.tracking_analytics.router import router as tracking_analytics_router
+from modules.camera_manager.router import router as camera_manager_router
+from modules.video_analytics.router import router as video_analytics_router
 
 app.include_router(marketplace_router)
 app.include_router(groups_router)
@@ -377,6 +381,8 @@ app.include_router(correlation_router)
 app.include_router(profiler_router)
 app.include_router(hypothesis_router)
 app.include_router(tracking_analytics_router)
+app.include_router(camera_manager_router)
+app.include_router(video_analytics_router)
 
 
 @app.get("/")
